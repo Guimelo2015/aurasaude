@@ -1,0 +1,129 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #f5f8f8;
+  --surface: #ffffff;
+  --surface-2: #f0f4f4;
+  --border: #e2e9e9;
+  --fg: #0f1f1e;
+  --muted: #5b6e6c;
+  --primary: #0f9d8f;
+  --primary-fg: #ffffff;
+  --primary-soft: #e3f5f2;
+  --primary-strong: #0b7d72;
+  --danger: #dc3b3b;
+  --danger-soft: #fdecec;
+  --warning: #d98a0b;
+  --warning-soft: #fdf3e1;
+  --success: #16a34a;
+  --success-soft: #e6f6ec;
+  --info: #3b82f6;
+  --info-soft: #e8f0fe;
+  --violet: #8b5cf6;
+  --violet-soft: #f1ebfe;
+  --chat-bg: #eef3f2;
+  --bubble-in: #ffffff;
+  --bubble-out: #d7f3ee;
+  --bubble-ia: #ece8fd;
+}
+
+.dark {
+  --bg: #0b1413;
+  --surface: #111c1b;
+  --surface-2: #172524;
+  --border: #22312f;
+  --fg: #e6efee;
+  --muted: #8ea29f;
+  --primary: #2cc2b1;
+  --primary-fg: #04201d;
+  --primary-soft: #113b36;
+  --primary-strong: #5ad6c8;
+  --danger: #f06363;
+  --danger-soft: #3a1717;
+  --warning: #f2b23e;
+  --warning-soft: #3a2a10;
+  --success: #3ccf72;
+  --success-soft: #11301d;
+  --info: #6aa3fb;
+  --info-soft: #14243f;
+  --violet: #a78bfa;
+  --violet-soft: #241c3d;
+  --chat-bg: #0d1817;
+  --bubble-in: #172524;
+  --bubble-out: #0f3b36;
+  --bubble-ia: #2a2347;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-strong: var(--primary-strong);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-violet: var(--violet);
+  --color-violet-soft: var(--violet-soft);
+  --color-chat-bg: var(--chat-bg);
+  --color-bubble-in: var(--bubble-in);
+  --color-bubble-out: var(--bubble-out);
+  --color-bubble-ia: var(--bubble-ia);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  border-color: var(--border);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 35%, transparent);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes blink {
+  0%, 80%, 100% { opacity: 0.25; }
+  40% { opacity: 1; }
+}
+.typing-dot {
+  animation: blink 1.2s infinite both;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.animate-in {
+  animation: fade-in 0.18s ease-out;
+}
