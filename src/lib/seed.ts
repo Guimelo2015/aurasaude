@@ -7,7 +7,9 @@ import type {
   Campaign,
   CampaignRecipient,
   Clinic,
+  ClinicSettings,
   Conversation,
+  ReimbursementDoc,
   Insurance,
   Lead,
   LeadStage,
@@ -48,6 +50,8 @@ export interface DataState {
   tasks: Task[];
   waitlist: WaitlistEntry[];
   campaigns: Campaign[];
+  reimbursementDocs: ReimbursementDoc[];
+  settings: ClinicSettings;
 }
 
 const CLINIC_ID = "clinic_equilibrio";
@@ -103,13 +107,16 @@ export function buildSeed(now = new Date()): DataState {
   let seq = 0;
   const id = (p: string) => `${p}_${(++seq).toString(36)}`;
 
-  const clinic: Clinic = { id: CLINIC_ID, name: "Instituto Equilíbrio — Psiquiatria e Saúde Mental", city: "São Paulo - SP" };
+  const clinic: Clinic = {
+    id: CLINIC_ID, name: "Instituto Equilíbrio — Psiquiatria e Saúde Mental", city: "São Paulo - SP",
+    cnpj: "34.512.778/0001-09", address: "Rua Joaquim Floriano, 820, cj. 112 — Itaim Bibi, São Paulo - SP, 04534-003", municipalReg: "6.114.552-3",
+  };
 
   const professionals: Professional[] = [
-    { id: "prof_ricardo", clinicId: CLINIC_ID, name: "Dr. Ricardo Albuquerque", specialty: "Psiquiatria (adultos)", council: "CRM-SP 112.345", color: "#0f9d8f" },
-    { id: "prof_marina", clinicId: CLINIC_ID, name: "Dra. Marina Teles", specialty: "Psiquiatria infantojuvenil", council: "CRM-SP 128.770", color: "#3b82f6" },
-    { id: "prof_paula", clinicId: CLINIC_ID, name: "Paula Neves", specialty: "Psicologia (TCC) e Neuropsicologia", council: "CRP 06/154321", color: "#d9469f" },
-    { id: "prof_felipe", clinicId: CLINIC_ID, name: "Dr. Felipe Andrade", specialty: "Psiquiatria e Neuromodulação (EMT)", council: "CRM-SP 101.904", color: "#f59e0b" },
+    { id: "prof_ricardo", clinicId: CLINIC_ID, name: "Dr. Ricardo Albuquerque", specialty: "Psiquiatria (adultos)", council: "CRM-SP 112.345", color: "#0f9d8f", attendsOnline: true },
+    { id: "prof_marina", clinicId: CLINIC_ID, name: "Dra. Marina Teles", specialty: "Psiquiatria infantojuvenil", council: "CRM-SP 128.770", color: "#3b82f6", attendsOnline: true },
+    { id: "prof_paula", clinicId: CLINIC_ID, name: "Paula Neves", specialty: "Psicologia (TCC) e Neuropsicologia", council: "CRP 06/154321", color: "#d9469f", attendsOnline: true },
+    { id: "prof_felipe", clinicId: CLINIC_ID, name: "Dr. Felipe Andrade", specialty: "Psiquiatria e Neuromodulação (EMT)", council: "CRM-SP 101.904", color: "#f59e0b", attendsOnline: false },
   ];
 
   const users: User[] = [
@@ -120,16 +127,16 @@ export function buildSeed(now = new Date()): DataState {
     { id: "user_paula", clinicId: CLINIC_ID, name: "Paula Neves", email: "paula@institutoequilibrio.com.br", role: "profissional", professionalId: "prof_paula", active: true },
   ];
 
-  const P = (id: string, name: string, category: Procedure["category"], price: number, durationMin: number): Procedure => ({
-    id, clinicId: CLINIC_ID, name, category, price, durationMin,
+  const P = (id: string, name: string, category: Procedure["category"], price: number, durationMin: number, onlineAllowed = false): Procedure => ({
+    id, clinicId: CLINIC_ID, name, category, price, durationMin, onlineAllowed,
   });
   const procedures: Procedure[] = [
-    P("proc_primeira", "Primeira consulta psiquiátrica", "Consulta", 650, 60),
-    P("proc_retorno", "Retorno psiquiátrico", "Consulta", 450, 30),
-    P("proc_infanto", "Consulta psiquiátrica infantojuvenil", "Consulta", 700, 60),
-    P("proc_tele", "Teleconsulta psiquiátrica", "Consulta", 450, 30),
-    P("proc_psico", "Sessão de psicoterapia (TCC)", "Psicoterapia", 250, 50),
-    P("proc_casal", "Terapia de casal", "Psicoterapia", 350, 60),
+    P("proc_primeira", "Primeira consulta psiquiátrica", "Consulta", 650, 60, true),
+    P("proc_retorno", "Retorno psiquiátrico", "Consulta", 450, 30, true),
+    P("proc_infanto", "Consulta psiquiátrica infantojuvenil", "Consulta", 700, 60, true),
+    P("proc_tele", "Teleconsulta psiquiátrica", "Consulta", 450, 30, true),
+    P("proc_psico", "Sessão de psicoterapia (TCC)", "Psicoterapia", 250, 50, true),
+    P("proc_casal", "Terapia de casal", "Psicoterapia", 350, 60, true),
     P("proc_neuro", "Avaliação neuropsicológica (pacote)", "Avaliação", 2800, 90),
     P("proc_tdah", "Avaliação de TDAH adulto", "Avaliação", 1600, 90),
     P("proc_emt", "Sessão de EMT (estimulação magnética)", "Neuromodulação", 380, 30),
@@ -170,9 +177,11 @@ export function buildSeed(now = new Date()): DataState {
   const sourceWeights: [Source, number][] = [
     ["Instagram", 20], ["Meta Ads", 18], ["Google", 26], ["Indicação", 28], ["Site", 6], ["Passante", 2],
   ];
-  const insuranceWeights: [Insurance, number][] = [
-    ["Particular", 40], ["Particular (reembolso)", 22], ["Unimed", 12], ["Bradesco Saúde", 9], ["SulAmérica Saúde", 8], ["Amil", 6], ["Porto Saúde", 3],
+  // "reembolso" = particular que pede reembolso ao plano (mesmos pesos de antes para manter a demo estável)
+  const insuranceWeights: [Insurance | "reembolso", number][] = [
+    ["Particular", 40], ["reembolso", 22], ["Unimed", 12], ["Bradesco Saúde", 9], ["SulAmérica Saúde", 8], ["Amil", 6], ["Porto Saúde", 3],
   ];
+  const REIMB_PLANS = ["SulAmérica Saúde", "Bradesco Saúde", "Amil", "Porto Saúde", "Omint", "Unimed"];
 
   const usedNames = new Set<string>();
   const newName = (first?: readonly string[]) => {
@@ -201,17 +210,19 @@ export function buildSeed(now = new Date()): DataState {
     const created = inactive ? subDays(now, between(330, 720)) : subDays(now, between(20, 720));
     const activeUntil = inactive ? subDays(now, between(95, 320)) : addDays(now, 60);
     const birth = subDays(subMonths(now, between(19, 68) * 12), between(0, 364));
-    const insurance = weighted(insuranceWeights);
+    const ins = weighted(insuranceWeights);
+    const insurance: Insurance = ins === "reembolso" ? "Particular" : ins;
     const t = new Set<string>();
     if (rand() < 0.75) t.add(pick(clinicalTags));
     if (rand() < 0.25) t.add(pick(clinicalTags));
-    if (insurance === "Particular (reembolso)") t.add("tag_reembolso");
+    if (ins === "reembolso") t.add("tag_reembolso");
     if (rand() < 0.15) t.add("tag_online");
     if (rand() < 0.08) t.add("tag_indicou");
     const p: Patient = {
       id: id("pac"), clinicId: CLINIC_ID, cpf: fakeCPF(rand), name, phone: newPhone(), email: emailOf(name),
       birthDate: iso(birth).slice(0, 10), insurance, source: weighted(sourceWeights), notes: [], tags: [...t], createdAt: iso(created),
     };
+    if (ins === "reembolso") p.reimbursement = { plan: REIMB_PLANS[i % REIMB_PLANS.length], card: `${(i * 7919) % 1000000}`.padStart(6, "0") + `${i}`.padStart(4, "0") };
     if (rand() < 0.3) {
       p.notes.push({
         id: id("note"),
@@ -248,7 +259,7 @@ export function buildSeed(now = new Date()): DataState {
     const p: Patient = {
       id: id("pac"), clinicId: CLINIC_ID, cpf: fakeCPF(rand), name, phone: guardian.p.phone, email: guardian.p.email,
       birthDate: iso(subDays(subMonths(now, between(6, 16) * 12), between(0, 364))).slice(0, 10),
-      insurance: guardian.p.insurance, source: "Indicação", notes: [], tags: t,
+      insurance: guardian.p.insurance, reimbursement: guardian.p.reimbursement, source: "Indicação", notes: [], tags: t,
       guardianId: guardian.p.id, guardianRelation: guardian.p.name.split(" ")[0].endsWith("a") ? "Mãe" : "Pai",
       createdAt: iso(created),
     };
@@ -314,7 +325,7 @@ export function buildSeed(now = new Date()): DataState {
         const apt: Appointment = {
           id: id("apt"), clinicId: CLINIC_ID, patientId: pm.p.id, professionalId: prof.id, procedureId: procedure.id,
           start: iso(start), durationMin: procedure.durationMin, status, value, confirmation,
-          modality: online ? "online" : "presencial",
+          modality: !online ? "presencial" : Number(pm.p.phone.slice(-1)) % 3 === 0 ? "whatsapp" : "video",
           createdAt: iso(subDays(start, between(1, 20))),
         };
         appointments.push(apt);
@@ -437,10 +448,12 @@ export function buildSeed(now = new Date()): DataState {
         lead.budgetId = b.id;
       }
       if (stage === "agendado" || stage === "realizado") {
+        const ins = weighted(insuranceWeights);
         const pat: Patient = {
           id: id("pac"), clinicId: CLINIC_ID, cpf: fakeCPF(rand), name: lead.name, phone: lead.phone, email: emailOf(lead.name),
           birthDate: iso(subDays(subMonths(now, between(20, 60) * 12), between(0, 364))).slice(0, 10),
-          insurance: weighted(insuranceWeights), source, notes: [], tags: [], createdAt: lead.createdAt,
+          insurance: ins === "reembolso" ? "Particular" : ins, source, notes: [], tags: ins === "reembolso" ? ["tag_reembolso"] : [], createdAt: lead.createdAt,
+          ...(ins === "reembolso" ? { reimbursement: { plan: REIMB_PLANS[patients.length % REIMB_PLANS.length] } } : {}),
         };
         patients.push(pat);
         lead.patientId = pat.id;
@@ -452,7 +465,7 @@ export function buildSeed(now = new Date()): DataState {
         const apt: Appointment = {
           id: id("apt"), clinicId: CLINIC_ID, patientId: pat.id, professionalId: profId, procedureId: pid, start: iso(start),
           durationMin: pr.durationMin, status: stage === "agendado" ? "agendado" : "compareceu", value: pr.price, leadId: lead.id,
-          modality: pid === "proc_tele" ? "online" : "presencial", createdAt: lead.stageChangedAt,
+          modality: pid === "proc_tele" ? "video" : "presencial", createdAt: lead.stageChangedAt,
         };
         appointments.push(apt);
         lead.appointmentId = apt.id;
@@ -580,7 +593,7 @@ export function buildSeed(now = new Date()): DataState {
       handoff: {
         interest: "Primeira consulta psiquiátrica", procedureId: "proc_tele",
         complaint: "Crises de ansiedade no trabalho há cerca de 4 meses, com taquicardia e falta de ar. Nunca fez acompanhamento.",
-        urgency: "media", insurance: "Particular (reembolso)", preferredPeriod: "Online, após as 18h", isReturningPatient: false,
+        urgency: "media", insurance: "Particular · pede reembolso", preferredPeriod: "Online, após as 18h", isReturningPatient: false,
         summary: "Prefere teleconsulta à noite. Perguntou sobre nota fiscal com CID para reembolso do plano. Boa candidata a psiquiatria + psicoterapia.",
         createdAt: iso(subMinutes(now, 25)),
       },
@@ -747,8 +760,11 @@ export function buildSeed(now = new Date()): DataState {
             const pat: Patient = {
               id: id("pac"), clinicId: CLINIC_ID, cpf: fakeCPF(rand), name: l.name, phone: l.phone, email: emailOf(l.name),
               birthDate: iso(subDays(subMonths(now, between(22, 55) * 12), between(0, 364))).slice(0, 10),
-              insurance: weighted(insuranceWeights), source: l.source, notes: [], tags: [], createdAt: iso(addDays(sent1, 1)),
+              insurance: "Particular", source: l.source, notes: [], tags: [], createdAt: iso(addDays(sent1, 1)),
             };
+            const ins = weighted(insuranceWeights);
+            if (ins === "reembolso") pat.reimbursement = { plan: REIMB_PLANS[patients.length % REIMB_PLANS.length] };
+            else pat.insurance = ins;
             patients.push(pat);
             const profId = Object.entries(profProcs).find(([, list]) => list.some(([p]) => p === pr.id))?.[0] ?? "prof_ricardo";
             const apt: Appointment = {
@@ -794,8 +810,63 @@ export function buildSeed(now = new Date()): DataState {
     },
   ];
 
+  // ---------- Teleconsulta: quem já fez online tem o termo aceito ----------
+  for (const a of appointments) {
+    if (a.modality === "presencial" || !a.modality) continue;
+    const p = patients.find((x) => x.id === a.patientId);
+    if (p && (!p.teleConsent || p.teleConsent.acceptedAt > a.createdAt)) {
+      p.teleConsent = { acceptedAt: a.createdAt, registeredBy: "Aline Moraes", channel: "WhatsApp" };
+    }
+    if (a.modality === "video" && !a.videoLink) a.videoLink = videoRoomLink(a.id);
+  }
+
+  // ---------- Documentos de reembolso (mês passado, alguns pacientes) ----------
+  const reimbursementDocs: ReimbursementDoc[] = [];
+  const lastMonth = subMonths(today0, 1);
+  const monthRef = format(lastMonth, "yyyy-MM");
+  let receiptNo = 1040;
+  for (const p of patients.filter((x) => x.reimbursement && !x.guardianId).slice(0, 12)) {
+    const byProf = new Map<string, Appointment[]>();
+    for (const a of appointments) {
+      if (a.patientId !== p.id || a.status !== "compareceu" || a.start.slice(0, 7) !== monthRef) continue;
+      byProf.set(a.professionalId, [...(byProf.get(a.professionalId) ?? []), a]);
+    }
+    for (const [profId, list] of byProf) {
+      const n = ++receiptNo;
+      reimbursementDocs.push({
+        id: id("doc"), clinicId: CLINIC_ID, kind: "recibo", number: n, patientId: p.id, professionalId: profId,
+        appointmentIds: list.map((a) => a.id), reference: monthLabel(lastMonth), total: list.reduce((s, a) => s + a.value, 0),
+        status: n % 3 === 0 ? "emitido" : "enviado", issuedAt: iso(addDays(new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 1), 1)),
+        issuedBy: "Dr. Henrique Vasconcelos", sentAt: n % 3 === 0 ? undefined : iso(addDays(new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 1), 1)),
+      });
+    }
+  }
+
   return {
     clinic, users, professionals, procedures, instances, patients, leads, conversations, messages, appointments, budgets, transactions,
-    aiConfig: DEFAULT_AI_CONFIG, tags, segments, plans, tasks, waitlist, campaigns,
+    aiConfig: DEFAULT_AI_CONFIG, tags, segments, plans, tasks, waitlist, campaigns, reimbursementDocs,
+    settings: { ...DEFAULT_SETTINGS, nextReceiptNumber: receiptNo + 1 },
   };
 }
+
+/** "Novembro de 2026" */
+export const monthLabel = (d: Date) => {
+  const s = d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
+
+/** Sala de vídeo da teleconsulta. Simulada na demo; na fase 2 vem do Google Meet / Zoom. */
+export const videoRoomLink = (aptId: string) => `https://meet.aurasaude.app/${aptId.replace(/[^a-z0-9]/gi, "").slice(-8)}-${CLINIC_ID.slice(-4)}`;
+
+export const DEFAULT_TELE_TERM =
+  "Declaro estar ciente de que a consulta será realizada a distância (teleconsulta), por vídeo, conforme a Resolução CFM nº 2.314/2022 e as normas do Conselho Federal de Psicologia. " +
+  "Fui informado(a) de que: (1) devo estar em local reservado, com boa conexão; (2) a consulta não será gravada sem o consentimento das duas partes; " +
+  "(3) os dados seguem a LGPD e o sigilo profissional; (4) o profissional pode indicar atendimento presencial sempre que julgar necessário; " +
+  "(5) em caso de emergência devo procurar o pronto-socorro mais próximo, ligar para o SAMU (192) ou para o CVV (188).";
+
+export const DEFAULT_SETTINGS: ClinicSettings = {
+  reimbursementRoles: [],
+  nextReceiptNumber: 1,
+  nextNfseNumber: 1,
+  teleTerm: DEFAULT_TELE_TERM,
+};

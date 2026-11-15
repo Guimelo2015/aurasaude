@@ -136,6 +136,9 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-[8vh] backdrop-blur-[2px]" onMouseDown={onClose}>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={typeof title === "string" ? title : undefined}
         className={cn("animate-in w-full rounded-2xl border border-border bg-surface shadow-2xl", size === "sm" ? "max-w-md" : size === "md" ? "max-w-xl" : "max-w-3xl")}
         onMouseDown={(e) => e.stopPropagation()}
       >

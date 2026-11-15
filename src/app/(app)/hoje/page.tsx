@@ -7,7 +7,7 @@ import { ptBR } from "date-fns/locale";
 import { create } from "zustand";
 import {
   AlertTriangle, CalendarCheck, CalendarClock, CalendarPlus, Cake, CheckCircle2, Clock, FileText, Gift, HeartPulse, ListChecks,
-  MessageCircle, Phone, Plus, RefreshCw, Send, Trash2, UserPlus, Video, XCircle,
+  MessageCircle, Phone, Plus, RefreshCw, Send, Trash2, UserPlus, XCircle,
 } from "lucide-react";
 import { Avatar, Badge, Button, Card, Empty, Tabs, toast } from "@/components/ui";
 import { TaskModal, WaitlistModal } from "@/components/organize";
@@ -15,7 +15,8 @@ import { AppointmentFormModal } from "@/components/forms/appointment-form";
 import { useApp, useCurrentUser } from "@/lib/store";
 import { useOrganize } from "@/lib/use-organize";
 import { overdueReturns } from "@/lib/organize";
-import type { ID, Patient } from "@/lib/types";
+import { isOnline, type ID, type Patient } from "@/lib/types";
+import { ModalityIcon } from "@/components/teleconsulta";
 import { capitalizeFirst, cn, fmtTime, money, shortName } from "@/lib/utils";
 
 const firstLast = (name: string) => {
@@ -161,7 +162,8 @@ export default function MeuDiaPage() {
                   <div className="min-w-0 flex-1">
                     <Link href={`/pacientes/${p?.id}`} className="block truncate text-sm font-medium hover:text-primary">{p?.name}</Link>
                     <p className="flex items-center gap-1 truncate text-xs text-muted">
-                      {a.modality === "online" && <Video size={11} />} {procName(a.procedureId)} · {prof && shortName(prof.name)}
+                      <ModalityIcon m={a.modality} /> {procName(a.procedureId)} · {prof && shortName(prof.name)}
+                      {isOnline(a.modality) && !p?.teleConsent && <span className="ml-1 rounded bg-warning-soft px-1 text-[10px] font-medium text-warning">sem termo online</span>}
                     </p>
                   </div>
                   <ConfirmBadge status={a.status} confirmation={a.confirmation} />

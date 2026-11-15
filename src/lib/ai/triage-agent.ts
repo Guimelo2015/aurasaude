@@ -44,7 +44,7 @@ const INTERESTS: { re: RegExp; label: string; procId: string; kind?: "minor" | "
 ];
 
 const INSURANCE_MAP: [RegExp, string][] = [
-  [/reembolso/, "Particular (reembolso)"],
+  [/reembolso/, "Particular · pede reembolso"],
   [/unimed/, "Unimed"],
   [/bradesco/, "Bradesco Saúde"],
   [/sul ?america/, "SulAmérica Saúde"],
@@ -109,7 +109,7 @@ export function respond(ctx: TriageContext): TriageResult {
     if (x.history) parts.push(`${x.history}.`);
     if (x.returning) parts.push("Já tem cadastro na clínica.");
     else parts.push("Contato novo — criar cadastro (CPF) ao agendar.");
-    if (x.insurance === "Particular (reembolso)") parts.push("Vai pedir reembolso: emitir NF com CID/CRM.");
+    if (x.insurance === "Particular · pede reembolso") parts.push("Vai pedir reembolso: emitir recibo/NFS-e (CID só com autorização).");
     if (proc && proc.price >= 1000) parts.push(`Ticket alto (${proc.name}).`);
     if (x.wantsHuman) parts.push("Pediu para falar com uma pessoa.");
     const pref = [x.modality, x.period].filter(Boolean).join(" · ");

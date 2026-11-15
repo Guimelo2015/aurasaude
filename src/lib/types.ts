@@ -14,6 +14,21 @@ export interface Clinic {
   name: string;
   cnpj?: string;
   city?: string;
+  /** endereço completo que sai nos recibos e notas */
+  address?: string;
+  /** inscrição municipal (NFS-e) */
+  municipalReg?: string;
+}
+
+/** Parâmetros da clínica editáveis pelo admin em Configurações. */
+export interface ClinicSettings {
+  /** perfis (além do admin, que sempre pode) liberados para emitir recibo/NFS-e de reembolso */
+  reimbursementRoles: Role[];
+  /** próximo número sequencial de cada documento */
+  nextReceiptNumber: number;
+  nextNfseNumber: number;
+  /** texto do termo de consentimento para teleatendimento (CFM 2.314/2022 · CFP) */
+  teleTerm: string;
 }
 
 export type Role = "admin" | "recepcao" | "profissional";
@@ -36,6 +51,8 @@ export interface Professional {
   /** registro no conselho (CRM / CRP) */
   council?: string;
   color: string; // cor na agenda
+  /** atende por teleconsulta (vídeo com link ou WhatsApp) */
+  attendsOnline?: boolean;
 }
 
 // ---------- Catálogo ----------
@@ -49,11 +66,14 @@ export interface Procedure {
   category: ProcedureCategory;
   price: number;
   durationMin: number;
+  /** pode ser feito por teleconsulta */
+  onlineAllowed?: boolean;
+  /** valor quando online; vazio = mesmo valor do presencial */
+  onlinePrice?: number;
 }
 
 export const INSURANCES = [
   "Particular",
-  "Particular (reembolso)",
   "Unimed",
   "Bradesco Saúde",
   "SulAmérica Saúde",
@@ -99,6 +119,10 @@ export interface Patient {
   /** responsável legal (menores / curatela) */
   guardianId?: ID;
   guardianRelation?: string;
+  /** particular que pede reembolso ao plano de saúde */
+  reimbursement?: { plan: string; card?: string };
+  /** aceite do termo de teleatendimento (exigido antes da 1ª consulta online) */
+  teleConsent?: { acceptedAt: ISODate; registeredBy: string; channel: string };
   createdAt: ISODate;
 }
 
@@ -262,6 +286,15 @@ export type AppointmentStatus =
   | "faltou"
   | "cancelado";
 
+/** presencial · vídeo com link da sala · chamada de vídeo pelo WhatsApp */
+export type Modality = "presencial" | "video" | "whatsapp";
+export const MODALITY_LABEL: Record<Modality, string> = {
+  presencial: "Presencial",
+  video: "Online · vídeo com link",
+  whatsapp: "Online · vídeo pelo WhatsApp",
+};
+export const isOnline = (m?: Modality) => m === "video" || m === "whatsapp";
+
 export interface Appointment {
   id: ID;
   clinicId: ID;
@@ -274,7 +307,9 @@ export interface Appointment {
   value: number;
   leadId?: ID;
   notes?: string;
-  modality?: "presencial" | "online";
+  modality?: Modality;
+  /** sala de vídeo da teleconsulta (modality = "video") */
+  videoLink?: string;
   /** confirmação automática via WhatsApp no dia anterior */
   confirmation?: "enviada" | "confirmou" | "cancelou" | "sem_resposta";
   createdAt: ISODate;
@@ -297,6 +332,28 @@ export interface Budget {
   total: number;
   status: "aberto" | "aprovado" | "recusado";
   createdAt: ISODate;
+}
+
+/** Recibo ou NFS-e entregue ao paciente para pedir reembolso ao plano. */
+export interface ReimbursementDoc {
+  id: ID;
+  clinicId: ID;
+  kind: "recibo" | "nfse";
+  number: number;
+  patientId: ID;
+  professionalId: ID;
+  appointmentIds: ID[];
+  /** "Consulta de 12/11/2026" ou "Novembro de 2026" */
+  reference: string;
+  total: number;
+  /** CID só com autorização do paciente, registrada (LGPD / sigilo) */
+  cid?: { code: string; authorizedAt: ISODate; registeredBy: string };
+  /** NFS-e simulada nesta fase */
+  verificationCode?: string;
+  status: "emitido" | "enviado" | "cancelado";
+  issuedAt: ISODate;
+  issuedBy: string;
+  sentAt?: ISODate;
 }
 
 export type PaymentMethod = "Pix" | "Cartão de crédito" | "Cartão de débito" | "Dinheiro" | "Convênio" | "Boleto";

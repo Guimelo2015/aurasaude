@@ -57,3 +57,11 @@ export const ROLE_LABEL: Record<Role, string> = {
 export function can(role: Role | undefined, perm: Permission) {
   return !!role && MATRIX[role].includes(perm);
 }
+
+/**
+ * Emitir recibo / NFS-e de reembolso: o admin sempre pode; os outros perfis só quando o admin
+ * libera em Configurações → Reembolso (settings.reimbursementRoles).
+ */
+export function canIssueReimbursement(role: Role | undefined, allowedRoles: Role[]) {
+  return role === "admin" || (!!role && allowedRoles.includes(role));
+}

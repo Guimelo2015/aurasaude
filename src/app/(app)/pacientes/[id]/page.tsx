@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { parseISO } from "date-fns";
 import {
-  AlertTriangle, Bot, CalendarPlus, ChevronLeft, ChevronRight, RefreshCw, Save, Trash2, Undo2, Cake, Clock, CreditCard, FileText, HeartPulse, ListPlus, Mail, MessageCircle, Pencil, Phone, Plus, Send, ShieldCheck, Unlink, UserRound, Users, Video,
+  AlertTriangle, Bot, CalendarPlus, ChevronLeft, ChevronRight, RefreshCw, Save, Trash2, Undo2, Cake, Clock, CreditCard, FileText, HeartPulse, ListPlus, Mail, MessageCircle, Pencil, Phone, Plus, Receipt, Send, ShieldCheck, Unlink, UserRound, Users,
 } from "lucide-react";
 import { Avatar, Badge, Button, Card, CardHeader, Empty, Textarea, toast } from "@/components/ui";
 import { CadastroHeader, RecordTabs, SectionTabs, ToolButton, ToolSep, Toolbar } from "@/components/erp";
@@ -20,6 +20,8 @@ import { PATIENT_PAGE, usePatientList } from "@/lib/patient-list";
 import { can } from "@/lib/permissions";
 import { APT_STATUS } from "@/lib/labels";
 import { STATUS_META } from "@/lib/organize";
+import { ModalityIcon, TeleConsentStatus } from "@/components/teleconsulta";
+import { ReimbursementPanel, useCanIssueReimbursement } from "@/components/reimbursement";
 import { ageFrom, cn, fmtDate, fmtRelative, maskCPF, maskPhone, money } from "@/lib/utils";
 
 type Secao = "geral" | "dados" | "tratamento" | "conversas" | "agendamentos" | "financeiro";
@@ -73,6 +75,8 @@ export default function PacienteDetalhe() {
   const payments = useMemo(() => allTrx.filter((t) => t.patientId === id && t.type === "entrada").sort((a, b) => b.date.localeCompare(a.date)), [allTrx, id]);
   const plans = useMemo(() => allPlans.filter((p) => p.patientId === id), [allPlans, id]);
   const dependents = useMemo(() => patients.filter((p) => p.guardianId === id), [patients, id]);
+  const reimbDocs = useApp((s) => s.reimbursementDocs.filter((d) => d.patientId === id).length);
+  const canIssue = useCanIssueReimbursement();
 
   const registrosHref = (selId?: string) => {
     const p = new URLSearchParams(lista);
@@ -117,6 +121,8 @@ export default function PacienteDetalhe() {
   const canEdit = can(user?.role, "pacientes.edit");
   const canDelete = user?.role === "admin";
   const showMoney = can(user?.role, "financeiro.view") || user?.role === "recepcao";
+  // quem emite reembolso vê a aba Financeiro (só com o quadro de reembolso, se não vê valores)
+  const showFinance = showMoney || canIssue;
   const birthdayMonth = parseISO(patient.birthDate).getMonth() === new Date().getMonth();
   const st = status[patient.id];
   const age = ageFrom(patient.birthDate);
@@ -129,7 +135,7 @@ export default function PacienteDetalhe() {
     { value: "tratamento", label: <span className="flex items-center gap-1">Tratamento{stalledCount > 0 && <span className="h-1.5 w-1.5 rounded-full bg-warning" />}</span>, count: plans.length },
     { value: "conversas", label: "WhatsApp", count: convs.length },
     { value: "agendamentos", label: "Agendamentos", count: apts.length },
-    ...(showMoney ? [{ value: "financeiro" as Secao, label: "Financeiro", count: budgets.length + payments.length }] : []),
+    ...(showFinance ? [{ value: "financeiro" as Secao, label: "Financeiro", count: (showMoney ? budgets.length + payments.length : 0) + reimbDocs }] : []),
   ];
 
   const remove = () => {
@@ -187,6 +193,13 @@ export default function PacienteDetalhe() {
         <ToolButton icon={CalendarPlus} label="Agendar" disabled={!canEdit} reason={readOnlyReason} onClick={() => setApt({})} />
         <ToolButton icon={ListPlus} label="Tarefa" disabled={!canEdit} reason={readOnlyReason} onClick={() => setTaskOpen(true)} />
         <ToolButton icon={Clock} label="Lista de espera" disabled={!canEdit} reason={readOnlyReason} onClick={() => setWaitOpen(true)} />
+        <ToolButton
+          icon={Receipt}
+          label="Reembolso"
+          disabled={!showFinance || secao === "financeiro"}
+          reason={!showFinance ? "Seu perfil não emite documentos de reembolso" : "Você já está no Financeiro"}
+          onClick={() => goSecao("financeiro")}
+        />
         <ToolSep />
         <ToolButton
           icon={RefreshCw}
@@ -218,6 +231,7 @@ export default function PacienteDetalhe() {
           <>
             <StatusBadge status={st} />
             <Badge tone={patient.insurance.startsWith("Particular") ? "neutral" : "info"}>{patient.insurance}</Badge>
+            {patient.reimbursement && <Badge tone="primary"><Receipt size={11} /> Reembolso · {patient.reimbursement.plan}</Badge>}
             {birthdayMonth && <Badge tone="violet"><Cake size={11} /> Aniversariante do mês</Badge>}
             {noShows >= 2 && <Badge tone="danger">{noShows} faltas</Badge>}
             <span className="text-[11px] text-muted">Paciente desde {fmtDate(patient.createdAt, "MMM/yyyy")}</span>
@@ -324,12 +338,18 @@ export default function PacienteDetalhe() {
               </div>
             </Card>
             <Card>
+              <CardHeader title="Teleconsulta" subtitle="Termo exigido antes da primeira consulta online" />
+              <div className="px-5 pb-5">
+                <TeleConsentStatus patient={patient} />
+              </div>
+            </Card>
+            <Card>
               <CardHeader title="Dados cadastrais" />
               <dl className="space-y-2.5 px-5 pb-5 text-sm">
                 {[
                   ["CPF", maskCPF(patient.cpf)],
                   ["Nascimento", fmtDate(patient.birthDate)],
-                  ["Convênio", patient.insurance],
+                  ["Convênio", patient.reimbursement ? `${patient.insurance} · reembolso ${patient.reimbursement.plan}` : patient.insurance],
                   ["Como conheceu", patient.source],
                 ].map(([k, v]) => (
                   <div key={k} className="flex justify-between gap-3">
@@ -448,7 +468,7 @@ export default function PacienteDetalhe() {
                     <div key={a.id} className="flex items-center gap-3 px-3 py-2.5">
                       <span className="h-8 w-1 rounded-full" style={{ background: prof?.color }} />
                       <div className="min-w-0 flex-1">
-                        <p className="flex items-center gap-1 text-sm font-medium">{a.modality === "online" && <Video size={12} className="text-info" />}{procedures.find((p) => p.id === a.procedureId)?.name}</p>
+                        <p className="flex items-center gap-1 text-sm font-medium"><ModalityIcon m={a.modality} size={12} />{procedures.find((p) => p.id === a.procedureId)?.name}</p>
                         <p className="text-xs text-muted">{fmtDate(a.start, "dd/MM/yyyy 'às' HH:mm")} · {prof?.name}</p>
                       </div>
                       {showMoney && <span className="text-xs text-muted">{money(a.value)}</span>}
@@ -462,8 +482,10 @@ export default function PacienteDetalhe() {
         </div>
       )}
 
-      {secao === "financeiro" && showMoney && (
+      {secao === "financeiro" && showFinance && (
         <div className="grid gap-4 lg:grid-cols-2">
+          <ReimbursementPanel patient={patient} />
+          {showMoney && (<>
           <Card>
             <CardHeader title="Orçamentos" action={canEdit && <Button size="sm" variant="outline" onClick={() => setBudgetOpen(true)}><FileText size={13} /> Novo</Button>} />
             <div className="divide-y divide-border px-2 pb-2">
@@ -502,6 +524,7 @@ export default function PacienteDetalhe() {
               ))}
             </div>
           </Card>
+          </>)}
         </div>
       )}
 

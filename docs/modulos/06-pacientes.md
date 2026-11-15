@@ -23,6 +23,7 @@ O módulo tem duas abas, que dividem a mesma aba do topo:
 | Salvar / Cancelar | — | só na seção Dados, com alteração | admin, recepção |
 | Importar · Duplicados · Campanha | planilha · unificar · campanha da lista filtrada | — | Campanha só com filtro e permissão de criar campanhas |
 | WhatsApp · Agendar · Tarefa · Lista de espera | — | ações do paciente | WhatsApp exige conversa vinculada |
+| Reembolso | — | vai para Financeiro → Reembolso do plano | quem vê o financeiro ou foi liberado para emitir |
 | Atualizar | recarrega os dados salvos | idem | todos |
 | Anterior / Próximo | move a seleção | troca de paciente | todos |
 
@@ -30,6 +31,20 @@ Botão que não se aplica fica apagado, e o tooltip explica o motivo.
 
 ## Cadastro
 Obrigatórios: **CPF** (validado pelos dígitos verificadores e único na clínica), nome completo, WhatsApp, e-mail e data de nascimento. Opcionais: convênio e origem.
+
+**Particular com reembolso:** a antiga opção de convênio "Particular (reembolso)" foi unificada em **Particular**. Com Particular, o cadastro mostra **"Pede reembolso ao plano de saúde"**, com o plano (obrigatório quando marcado) e a carteirinha (opcional, sai no recibo). Dados antigos são convertidos sozinhos. A triagem da IA marca "Particular · pede reembolso" e o cadastro já abre com a opção marcada.
+
+## Reembolso do plano (ficha → Financeiro)
+Código: [reimbursement.tsx](../../src/components/reimbursement.tsx) · documento: [documento/[id]](../../src/app/documento/[id]/page.tsx)
+
+- **Emitir documento:** **Recibo de reembolso** ou **NFS-e** (simulada nesta fase, com número e código de verificação de exemplo e a faixa "sem valor fiscal").
+- **O que entra:** só consultas **realizadas** (Compareceu). Escolhe-se **uma consulta** ou **um mês inteiro**, com a lista de atendimentos para desmarcar algum. Um documento por **profissional**, que é quem assina. Consulta que já está em documento válido do mesmo tipo aparece bloqueada ("já no recibo nº …"), para não emitir em dobro.
+- **CID:** só entra marcando **"o paciente autorizou"** e informando o código (formato CID-10, ex.: F41.1). Fica registrado quem marcou e quando, e isso aparece no documento.
+- **Documento:** abre em nova aba pronto para **Imprimir / salvar PDF**: dados da clínica (CNPJ, endereço), paciente (CPF, plano, carteirinha), profissional (especialidade, CRM/CRP), tabela de atendimentos com modalidade, total com **valor por extenso**, local, data e linha de assinatura.
+- **Depois de emitido:** **Enviar** (mensagem na conversa do WhatsApp e status "Enviado ao paciente"), **Abrir** e **Cancelar** (fica no histórico como cancelado, com marca d'água, e libera as consultas para um novo documento).
+- **Numeração:** sequencial por tipo, em Configurações → Reembolso.
+
+**Teleconsulta na ficha:** a Visão geral mostra se o paciente aceitou o termo de teleatendimento, com o botão **Registrar aceite**.
 
 ## Status automático
 Calculado a cada mudança, **nesta ordem** (o primeiro que se aplica vale):

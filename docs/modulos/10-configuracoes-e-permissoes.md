@@ -12,7 +12,9 @@ Código: [configuracoes/page.tsx](../../src/app/(app)/configuracoes/page.tsx) ·
 - **Números de WhatsApp:** cada número é uma conexão (setor + cor). Conectar mostra o QR Code (simulado). Na fase 2, cada número vira uma instância na Evolution API.
 - **Agente de IA:** liga/desliga, nome, tom de voz, instruções (vira o prompt do Claude na fase 2), perguntas de triagem e regras de transferência. Com a IA desligada, novos contatos vão direto para a fila Novos.
 - **Usuários** (padrão Registros / Cadastro): grade com busca, filtro por perfil e ordenação; ficha com **Dados** e **Permissões** (a mesma matriz abaixo, item por item). Ação: **Desativar / Reativar** o acesso, pela barra, por um botão em cada linha (coluna Acesso) ou pelo bloco "Acesso ao sistema" na ficha, sempre com confirmação. Ninguém consegue desativar a si mesmo. Quem é desativado some do login e, se estiver com a sessão aberta, é desconectado na hora. **Não existe exclusão de usuário, de propósito:** o histórico de conversas, leads e tarefas continua ligado a quem fez. *Adicionar* fica apagado: convites por e-mail entram com o backend.
-- **Procedimentos e preços** (padrão Registros / Cadastro): grade com busca, filtro por categoria e ordenação por nome, categoria, duração ou preço; ficha com **Dados** (formulário na tela, Salvar/Cancelar na barra) e **Uso** (agendamentos, futuros, realizados, receita realizada e planos ativos). Excluir avisa quando há agendamento futuro ou plano ativo. Os preços são usados em agendamentos, orçamentos, planos, IA e em todas as contas de valor.
+- **Procedimentos e preços** (padrão Registros / Cadastro): grade com busca, filtro por categoria e ordenação por nome, categoria, duração ou preço; ficha com **Dados** (formulário na tela, Salvar/Cancelar na barra) e **Uso** (agendamentos, futuros, realizados, receita realizada e planos ativos). Excluir avisa quando há agendamento futuro ou plano ativo. Os preços são usados em agendamentos, orçamentos, planos, IA e em todas as contas de valor. Cada procedimento também define se **pode ser feito online** e o **valor online** (vazio = mesmo valor do presencial); a grade mostra a coluna *Online*.
+- **Teleconsulta:** liga/desliga "Atende online" por profissional, mostra os procedimentos liberados para online com o valor, e guarda o **termo de consentimento do teleatendimento** (editável, com "Restaurar texto padrão"). Regras aplicadas: ver [Agenda → Teleconsulta](05-agenda.md#teleconsulta).
+- **Reembolso:** dados que saem nos documentos (razão social, CNPJ, inscrição municipal, endereço, cidade), **quem pode emitir** (admin sempre; Recepção e Profissional só se o admin liberar, e o profissional emite só para os próprios atendimentos) e a numeração dos recibos e das NFS-e.
 
 ## Barra de ações nas outras telas
 Telas que não são lista de registros mantêm o layout próprio e ganham só a barra no topo, com as ações que já tinham:
@@ -40,5 +42,6 @@ Telas que não são lista de registros mantêm o layout próprio e ganham só a 
 | Pacientes | todos, edita e exclui | todos, edita | só os que atendeu, leitura |
 | Relatórios | ✅ | — | — |
 | Configurações | ✅ | — | — |
+| **Emitir recibo / NFS-e de reembolso** | ✅ sempre | se liberado | se liberado, só os próprios atendimentos |
 
 Botões de campanha em outras telas (Dashboard, Pacientes, Funil, Relatórios) só aparecem para quem tem **criar campanhas**. Acessar uma tela sem permissão redireciona para a primeira tela permitida.

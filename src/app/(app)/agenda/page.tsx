@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { addDays, addMinutes, format, isSameDay, isToday, parseISO, setHours, setMinutes, startOfDay, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Ban, CalendarPlus, CalendarDays, CalendarSearch, Check, CheckCheck, ChevronLeft, ChevronRight, MessageCircle, RefreshCw, UserX, Video } from "lucide-react";
+import { Ban, CalendarPlus, CalendarDays, CalendarSearch, Check, CheckCheck, ChevronLeft, ChevronRight, MessageCircle, RefreshCw, UserX } from "lucide-react";
 import { ToolButton, ToolSep, Toolbar } from "@/components/erp";
 import { Badge, Button, Card, Modal, PageHeader, Select, Tabs, toast } from "@/components/ui";
 import { AppointmentFormModal } from "@/components/forms/appointment-form";
@@ -12,7 +12,8 @@ import { MiniCalendar } from "@/components/mini-calendar";
 import { useApp, useCurrentUser } from "@/lib/store";
 import { can } from "@/lib/permissions";
 import { APT_STATUS } from "@/lib/labels";
-import type { Appointment, AppointmentStatus } from "@/lib/types";
+import { MODALITY_LABEL, type Appointment, type AppointmentStatus } from "@/lib/types";
+import { ModalityIcon, TeleRoom } from "@/components/teleconsulta";
 import { cn, maskPhone, money } from "@/lib/utils";
 
 const START_H = 8;
@@ -192,7 +193,7 @@ export default function AgendaPage() {
                           style={{ top, height, borderLeftColor: c.prof.color, background: a.status === "faltou" ? undefined : `color-mix(in srgb, ${c.prof.color} 14%, var(--surface))` }}
                         >
                           <p className="flex items-center gap-1 truncate font-semibold">
-                            {a.modality === "online" && <Video size={11} className="shrink-0 text-info" />}
+                            <ModalityIcon m={a.modality} />
                             {a.confirmation === "confirmou" && a.status !== "compareceu" && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" title="Confirmou pelo WhatsApp" />}
                             <span className="truncate">{p?.name ?? "Paciente"}</span>
                           </p>
@@ -242,9 +243,10 @@ function AppointmentDetail({ apt, onClose }: { apt: Appointment | null; onClose:
         <div><p className="text-[11px] uppercase text-muted">Status</p><Badge tone={APT_STATUS[apt.status].tone}>{APT_STATUS[apt.status].label}</Badge></div>
         <div><p className="text-[11px] uppercase text-muted">WhatsApp</p><p className="font-medium">{patient && maskPhone(patient.phone)}</p></div>
         <div><p className="text-[11px] uppercase text-muted">Convênio</p><p className="font-medium">{patient?.insurance}</p></div>
-        <div><p className="text-[11px] uppercase text-muted">Modalidade</p><p className="flex items-center gap-1 font-medium">{apt.modality === "online" ? <><Video size={13} className="text-info" /> Online (vídeo)</> : "Presencial"}</p></div>
+        <div><p className="text-[11px] uppercase text-muted">Modalidade</p><p className="flex items-center gap-1 font-medium"><ModalityIcon m={apt.modality} size={13} /> {MODALITY_LABEL[apt.modality ?? "presencial"]}</p></div>
         <div><p className="text-[11px] uppercase text-muted">Confirmação WhatsApp</p><p className="font-medium">{CONFIRM_LABEL[apt.confirmation ?? ""] ?? "Não enviada"}</p></div>
       </div>
+      {apt.status !== "cancelado" && <TeleRoom apt={apt} patient={patient} />}
       {apt.status === "cancelado" && parseISO(apt.start) > new Date() && !apt.notes?.includes("reaproveitado") && (
         <div className="mt-4 rounded-lg border border-primary/30 bg-primary-soft/40 p-3">
           <p className="text-sm font-medium">Horário liberado: encaixar alguém da lista de espera?</p>

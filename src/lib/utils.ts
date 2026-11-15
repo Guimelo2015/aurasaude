@@ -23,6 +23,49 @@ export const money = (v: number) => brl.format(v);
 export const moneyCompact = (v: number) => brlCompact.format(v);
 export const pct = (v: number) => `${(v * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 
+// ─── Valor por extenso (recibos) ────────────────────────────────
+const UNI = ["", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove", "dez", "onze", "doze", "treze", "quatorze", "quinze", "dezesseis", "dezessete", "dezoito", "dezenove"];
+const DEZ = ["", "", "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta", "oitenta", "noventa"];
+const CEM = ["", "cento", "duzentos", "trezentos", "quatrocentos", "quinhentos", "seiscentos", "setecentos", "oitocentos", "novecentos"];
+
+function ate999(n: number): string {
+  if (n === 0) return "";
+  if (n === 100) return "cem";
+  const c = Math.floor(n / 100);
+  const r = n % 100;
+  const parts: string[] = [];
+  if (c) parts.push(CEM[c]);
+  if (r) parts.push(r < 20 ? UNI[r] : DEZ[Math.floor(r / 10)] + (r % 10 ? ` e ${UNI[r % 10]}` : ""));
+  return parts.join(" e ");
+}
+
+function inteiroExtenso(n: number): string {
+  if (n === 0) return "zero";
+  const mi = Math.floor(n / 1_000_000);
+  const mil = Math.floor((n % 1_000_000) / 1000);
+  const resto = n % 1000;
+  const groups: [number, string][] = [];
+  if (mi) groups.push([mi, mi === 1 ? "um milhão" : `${ate999(mi)} milhões`]);
+  if (mil) groups.push([mil, mil === 1 ? "mil" : `${ate999(mil)} mil`]);
+  if (resto) groups.push([resto, ate999(resto)]);
+  // "e" antes do último grupo quando ele é < 100 ou centena redonda (mil e duzentos, dois milhões e quinhentos mil)
+  const [lastVal, lastTxt] = groups[groups.length - 1];
+  if (groups.length > 1 && (lastVal < 100 || lastVal % 100 === 0)) {
+    return `${groups.slice(0, -1).map((g) => g[1]).join(" ")} e ${lastTxt}`;
+  }
+  return groups.map((g) => g[1]).join(" ");
+}
+
+/** 1250.5 → "mil duzentos e cinquenta reais e cinquenta centavos" */
+export function moneyExtenso(v: number) {
+  const total = Math.round(Math.abs(v) * 100);
+  const reais = Math.floor(total / 100);
+  const cent = total % 100;
+  const r = reais ? `${inteiroExtenso(reais)}${reais % 1_000_000 === 0 && reais >= 1_000_000 ? " de" : ""} ${reais === 1 ? "real" : "reais"}` : "";
+  const c = cent ? `${inteiroExtenso(cent)} ${cent === 1 ? "centavo" : "centavos"}` : "";
+  return [r, c].filter(Boolean).join(" e ") || "zero reais";
+}
+
 export const onlyDigits = (v: string) => v.replace(/\D/g, "");
 
 // ---------- CPF ----------

@@ -5,7 +5,8 @@ import { addMinutes, format, parseISO } from "date-fns";
 import { AlertTriangle } from "lucide-react";
 import { Button, Field, Input, Modal, Select, toast } from "../ui";
 import { useApp, useCurrentUser } from "@/lib/store";
-import type { Appointment, ID } from "@/lib/types";
+import { isOnline, MODALITY_LABEL, type Appointment, type ID, type Modality } from "@/lib/types";
+import { TeleConsentStatus } from "@/components/teleconsulta";
 import { maskCPF, money } from "@/lib/utils";
 
 interface Props {
@@ -35,7 +36,7 @@ export function AppointmentFormModal({ open, onClose, patientId, leadId, procedu
   const [time, setTime] = useState("09:00");
   const [value, setValue] = useState(0);
   const [notes, setNotes] = useState("");
-  const [modality, setModality] = useState<"presencial" | "online">("presencial");
+  const [modality, setModality] = useState<Modality>("presencial");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -50,12 +51,30 @@ export function AppointmentFormModal({ open, onClose, patientId, leadId, procedu
     setDate(format(s, "yyyy-MM-dd"));
     setTime(start ? format(s, "HH:mm") : "09:00");
     setNotes("");
-    setModality(pr?.id === "proc_tele" ? "online" : "presencial");
+    setModality(pr?.id === "proc_tele" ? "video" : "presencial");
     setError("");
-  }, [open, patientId, procedureId, professionalId, start, user, professionals, procedures]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, patientId, procedureId, professionalId, start]);
 
   const procedure = procedures.find((p) => p.id === proc);
   const patient = patients.find((p) => p.id === pid);
+  const professional = professionals.find((p) => p.id === prof);
+
+  // Regras da teleconsulta: o procedimento precisa permitir e o profissional precisa atender online.
+  const onlineBlock = !procedure?.onlineAllowed
+    ? `"${procedure?.name ?? "Este procedimento"}" não é feito online (ajuste em Configurações → Procedimentos)`
+    : professional && !professional.attendsOnline
+      ? `${professional.name} não atende online (ajuste em Configurações → Teleconsulta)`
+      : "";
+  const priceFor = (p: typeof procedure, m: Modality) => (p ? (isOnline(m) && p.onlinePrice ? p.onlinePrice : p.price) : 0);
+  const changeModality = (m: Modality) => {
+    setModality(m);
+    setValue(priceFor(procedure, m));
+  };
+  useEffect(() => {
+    if (onlineBlock && isOnline(modality)) changeModality("presencial");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onlineBlock]);
 
   const results = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -79,6 +98,7 @@ export function AppointmentFormModal({ open, onClose, patientId, leadId, procedu
     if (!pid) return setError("Selecione o paciente (o agendamento precisa estar vinculado a um cadastro).");
     if (!procedure) return setError("Selecione o procedimento.");
     if (conflict) return setError("Horário em conflito com outro agendamento deste profissional.");
+    if (isOnline(modality) && onlineBlock) return setError(onlineBlock);
     const s = new Date(`${date}T${time}:00`);
     const apt = addAppointment({
       patientId: pid, professionalId: prof, procedureId: procedure.id, start: s.toISOString(),
@@ -135,11 +155,12 @@ export function AppointmentFormModal({ open, onClose, patientId, leadId, procedu
           <Select
             value={proc}
             onChange={(e) => {
+              const next = procedures.find((p) => p.id === e.target.value);
               setProc(e.target.value);
-              setValue(procedures.find((p) => p.id === e.target.value)?.price ?? 0);
+              setValue(priceFor(next, next?.onlineAllowed ? modality : "presencial"));
             }}
           >
-            {procedures.map((p) => <option key={p.id} value={p.id}>{p.name} — {money(p.price)}</option>)}
+            {procedures.map((p) => <option key={p.id} value={p.id}>{p.name} — {money(p.price)}{p.onlineAllowed ? " · online" : ""}</option>)}
           </Select>
         </Field>
         <Field label="Profissional" required>
@@ -156,12 +177,22 @@ export function AppointmentFormModal({ open, onClose, patientId, leadId, procedu
         <Field label="Valor (R$)">
           <Input type="number" min={0} value={value} onChange={(e) => setValue(Number(e.target.value))} />
         </Field>
-        <Field label="Modalidade">
-          <Select value={modality} onChange={(e) => setModality(e.target.value as "presencial" | "online")}>
-            <option value="presencial">Presencial</option>
-            <option value="online">Online (teleconsulta por vídeo)</option>
+        <Field
+          label="Modalidade"
+          hint={onlineBlock ? `Online indisponível: ${onlineBlock}` : isOnline(modality) && procedure?.onlinePrice ? `Valor online: ${money(procedure.onlinePrice)}` : undefined}
+        >
+          <Select value={modality} onChange={(e) => changeModality(e.target.value as Modality)}>
+            <option value="presencial">{MODALITY_LABEL.presencial}</option>
+            <option value="video" disabled={!!onlineBlock}>{MODALITY_LABEL.video}</option>
+            <option value="whatsapp" disabled={!!onlineBlock}>{MODALITY_LABEL.whatsapp}</option>
           </Select>
         </Field>
+        {isOnline(modality) && patient && (
+          <div className="sm:col-span-2">
+            <TeleConsentStatus patient={patient} compact />
+            {modality === "video" && <p className="mt-1 text-[11px] text-muted">O link da sala é gerado ao agendar e pode ser enviado ao paciente pelo detalhe do agendamento.</p>}
+          </div>
+        )}
         <Field label="Observações" className="sm:col-span-2">
           <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Opcional" />
         </Field>

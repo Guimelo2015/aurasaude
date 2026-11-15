@@ -3,13 +3,17 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { useEffect, useState } from "react";
-import { buildSeed, DEFAULT_AI_CONFIG, type DataState } from "./seed";
+import { buildSeed, DEFAULT_AI_CONFIG, DEFAULT_SETTINGS, videoRoomLink, type DataState } from "./seed";
 import type {
   AiAgentConfig,
   Appointment,
   AppointmentStatus,
   Budget,
   Campaign,
+  Clinic,
+  ClinicSettings,
+  Professional,
+  ReimbursementDoc,
   Conversation,
   HandoffCard,
   ID,
@@ -114,6 +118,16 @@ interface Actions {
   upsertProcedure: (p: Omit<Procedure, "clinicId"> & { id?: ID }) => void;
   removeProcedure: (id: ID) => void;
   toggleUser: (id: ID) => void;
+  updateClinic: (patch: Partial<Clinic>) => void;
+  updateSettings: (patch: Partial<ClinicSettings>) => void;
+  updateProfessional: (id: ID, patch: Partial<Professional>) => void;
+
+  // teleconsulta
+  registerTeleConsent: (patientId: ID, channel: string) => void;
+
+  // reembolso
+  issueReimbursementDoc: (d: Omit<ReimbursementDoc, "id" | "clinicId" | "number" | "status" | "issuedAt" | "issuedBy" | "verificationCode">) => ReimbursementDoc;
+  setReimbursementDocStatus: (id: ID, status: ReimbursementDoc["status"]) => void;
 
   // campanhas
   addCampaign: (c: Omit<Campaign, "id" | "clinicId" | "createdAt" | "updatedAt" | "stats">) => Campaign;
@@ -147,6 +161,8 @@ const EMPTY: DataState = {
   tasks: [],
   waitlist: [],
   campaigns: [],
+  reimbursementDocs: [],
+  settings: DEFAULT_SETTINGS,
 };
 
 const now = () => new Date().toISOString();
@@ -434,7 +450,14 @@ export const useApp = create<AppState>()(
 
         // ---------------- agenda ----------------
         addAppointment: (a) => {
-          const apt: Appointment = { ...a, id: uid("apt"), clinicId: get().clinic.id, createdAt: now() };
+          const aptId = uid("apt");
+          const apt: Appointment = {
+            ...a,
+            id: aptId,
+            clinicId: get().clinic.id,
+            createdAt: now(),
+            videoLink: a.modality === "video" ? (a.videoLink ?? videoRoomLink(aptId)) : undefined,
+          };
           set((s) => ({ appointments: [...s.appointments, apt] }));
           // automação: lead vinculado avança para "Agendado"
           const lead =
@@ -499,6 +522,44 @@ export const useApp = create<AppState>()(
           }),
         removeProcedure: (id) => set((s) => ({ procedures: s.procedures.filter((p) => p.id !== id) })),
         toggleUser: (id) => set((s) => ({ users: s.users.map((u) => (u.id === id ? { ...u, active: !u.active } : u)) })),
+        updateClinic: (patch) => set((s) => ({ clinic: { ...s.clinic, ...patch } })),
+        updateSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
+        updateProfessional: (id, patch) =>
+          set((s) => ({ professionals: s.professionals.map((p) => (p.id === id ? { ...p, ...patch } : p)) })),
+
+        // ---------------- teleconsulta ----------------
+        registerTeleConsent: (patientId, channel) =>
+          set((s) => ({
+            patients: s.patients.map((p) =>
+              p.id === patientId ? { ...p, teleConsent: { acceptedAt: now(), registeredBy: currentUser()?.name ?? "Sistema", channel } } : p,
+            ),
+          })),
+
+        // ---------------- reembolso ----------------
+        issueReimbursementDoc: (d) => {
+          const s = get();
+          const nfse = d.kind === "nfse";
+          const number = nfse ? s.settings.nextNfseNumber : s.settings.nextReceiptNumber;
+          const doc: ReimbursementDoc = {
+            ...d,
+            id: uid("doc"),
+            clinicId: s.clinic.id,
+            number,
+            status: "emitido",
+            issuedAt: now(),
+            issuedBy: currentUser()?.name ?? "Sistema",
+            verificationCode: nfse ? Math.random().toString(36).slice(2, 10).toUpperCase() : undefined,
+          };
+          set((st) => ({
+            reimbursementDocs: [doc, ...st.reimbursementDocs],
+            settings: { ...st.settings, ...(nfse ? { nextNfseNumber: number + 1 } : { nextReceiptNumber: number + 1 }) },
+          }));
+          return doc;
+        },
+        setReimbursementDocStatus: (id, status) =>
+          set((s) => ({
+            reimbursementDocs: s.reimbursementDocs.map((d) => (d.id === id ? { ...d, status, sentAt: status === "enviado" ? now() : d.sentAt } : d)),
+          })),
 
         // ---------------- campanhas ----------------
         addCampaign: (c) => {
@@ -569,8 +630,14 @@ export const useApp = create<AppState>()(
     {
       name: "aura-saude-demo",
       // v4: campanhas com destinatários reais e atribuição. Versões antigas são regeradas.
-      version: 4,
-      migrate: (persisted, version) => (version < 4 ? ({ session: {}, seeded: false } as unknown as AppState) : (persisted as AppState)),
+      // v5: teleconsulta (modalidades, termo, link) e reembolso (recibo/NFS-e); converte os dados da v4.
+      version: 5,
+      migrate: (persisted, version) => {
+        if (version < 4) return { session: {}, seeded: false } as unknown as AppState;
+        const s = persisted as AppState;
+        if (version < 5) return migrateV5(s);
+        return s;
+      },
       storage: createJSONStorage(() => safeLocalStorage),
       partialize: (s) => {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -580,6 +647,39 @@ export const useApp = create<AppState>()(
     },
   ),
 );
+
+/** v4 → v5: unifica "Particular (reembolso)", converte modalidade "online" e cria os parâmetros novos. */
+function migrateV5(s: AppState): AppState {
+  const seed = buildSeed();
+  const seedProc = new Map(seed.procedures.map((p) => [p.id, p]));
+  const seedProf = new Map(seed.professionals.map((p) => [p.id, p]));
+  const appointments = s.appointments.map((a) => {
+    const m = a.modality as string | undefined;
+    if (m !== "online") return a;
+    return { ...a, modality: "video" as const, videoLink: videoRoomLink(a.id) };
+  });
+  const onlinePatients = new Map<ID, string>();
+  for (const a of appointments) if (a.modality === "video" && (!onlinePatients.has(a.patientId) || a.createdAt < onlinePatients.get(a.patientId)!)) onlinePatients.set(a.patientId, a.createdAt);
+  return {
+    ...s,
+    clinic: { ...seed.clinic, ...s.clinic },
+    professionals: s.professionals.map((p) => ({ attendsOnline: seedProf.get(p.id)?.attendsOnline ?? true, ...p })),
+    procedures: s.procedures.map((p) => ({ onlineAllowed: seedProc.get(p.id)?.onlineAllowed ?? false, ...p })),
+    patients: s.patients.map((p) => {
+      const old = (p.insurance as string) === "Particular (reembolso)";
+      const at = onlinePatients.get(p.id);
+      return {
+        ...p,
+        insurance: old ? "Particular" : p.insurance,
+        reimbursement: old ? { plan: "Não informado" } : p.reimbursement,
+        teleConsent: p.teleConsent ?? (at ? { acceptedAt: at, registeredBy: "Migração", channel: "Registro anterior" } : undefined),
+      };
+    }),
+    appointments,
+    reimbursementDocs: s.reimbursementDocs ?? [],
+    settings: { ...DEFAULT_SETTINGS, ...s.settings },
+  };
+}
 
 // =====================================================================
 // Envio de campanhas (simulação). Em produção: fila no servidor que envia

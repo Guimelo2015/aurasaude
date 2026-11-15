@@ -86,6 +86,8 @@ export const NAV_GROUPS: NavGroup[] = [
           { label: "Agente de IA", aba: "ia" },
           { label: "Usuários", aba: "usuarios" },
           { label: "Procedimentos", aba: "procedimentos" },
+          { label: "Teleconsulta", aba: "teleconsulta" },
+          { label: "Reembolso", aba: "reembolso" },
         ],
       },
     ],

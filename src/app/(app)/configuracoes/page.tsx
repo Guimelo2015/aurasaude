@@ -5,26 +5,29 @@ import {
   Bot, ChevronLeft, ChevronRight, Loader2, Pencil, Plus, QrCode, RefreshCw, Save, Search, Smartphone, Trash2, Undo2, Unplug, UserCheck, UserX, X,
 } from "lucide-react";
 import { useUrlTab } from "@/lib/use-url-tab";
+import { ReimbursementSettings, TeleSettings } from "@/components/settings-tele-reimb";
 import { Avatar, Badge, Button, Card, CardHeader, Empty, Field, Input, Modal, PageHeader, Select, Switch, Textarea, toast } from "@/components/ui";
 import { CadastroHeader, DataGrid, GridFooter, RecordTabs, SectionTabs, ToolButton, ToolSep, Toolbar, type Column } from "@/components/erp";
 import { useQuery } from "@/lib/use-query";
 import { useApp, useCurrentUser } from "@/lib/store";
-import { can, ROLE_LABEL, type Permission } from "@/lib/permissions";
+import { can, canIssueReimbursement, ROLE_LABEL, type Permission } from "@/lib/permissions";
 import { PROCEDURE_CATEGORIES, type AiAgentConfig, type Procedure, type Role, type User, type WhatsAppInstance } from "@/lib/types";
 import { cn, maskPhone, money, normalizePhone } from "@/lib/utils";
 
-type Tab = "whatsapp" | "ia" | "usuarios" | "procedimentos";
+type Tab = "whatsapp" | "ia" | "usuarios" | "procedimentos" | "teleconsulta" | "reembolso";
 
 export default function ConfiguracoesPage() {
-  const [tab] = useUrlTab<Tab>(["whatsapp", "ia", "usuarios", "procedimentos"], "whatsapp");
+  const [tab] = useUrlTab<Tab>(["whatsapp", "ia", "usuarios", "procedimentos", "teleconsulta", "reembolso"], "whatsapp");
   return (
     <div className="space-y-5 p-4 lg:p-6">
-      {/* Usuários e Procedimentos seguem o padrão Registros/Cadastro: a barra de ações fica no topo */}
-      {tab !== "usuarios" && tab !== "procedimentos" && <PageHeader title="Configurações" subtitle="Conexões, agente de IA, equipe e catálogo" />}
+      {/* Usuários e Procedimentos seguem o padrão Registros/Cadastro; Teleconsulta e Reembolso têm cabeçalho próprio */}
+      {(tab === "whatsapp" || tab === "ia") && <PageHeader title="Configurações" subtitle="Conexões, agente de IA, equipe e catálogo" />}
       {tab === "whatsapp" && <WhatsAppSettings />}
       {tab === "ia" && <AiSettings />}
       {tab === "usuarios" && <UsersSettings />}
       {tab === "procedimentos" && <ProceduresSettings />}
+      {tab === "teleconsulta" && <TeleSettings />}
+      {tab === "reembolso" && <ReimbursementSettings />}
     </div>
   );
 }
@@ -302,6 +305,7 @@ function UsersSettings() {
   const users = useApp((s) => s.users);
   const professionals = useApp((s) => s.professionals);
   const toggle = useApp((s) => s.toggleUser);
+  const reimbRoles = useApp((s) => s.settings.reimbursementRoles);
   const me = useCurrentUser();
   const R = useRecordQuery();
   const [q, setQ] = useState(R.get("q"));
@@ -510,6 +514,15 @@ function UsersSettings() {
                     </li>
                   );
                 })}
+                {(() => {
+                  const ok = canIssueReimbursement(selected.role, reimbRoles);
+                  return (
+                    <li className={cn("flex items-center gap-2", !ok && "text-muted line-through decoration-border")}>
+                      <span className={cn("grid h-4 w-4 place-items-center rounded-full text-[10px]", ok ? "bg-success-soft text-success" : "bg-surface-2")}>{ok ? "✓" : "–"}</span>
+                      Emitir recibo / NFS-e de reembolso <span className="text-[11px] text-muted no-underline">(liberado em Reembolso)</span>
+                    </li>
+                  );
+                })()}
               </ul>
             </Card>
           )}
@@ -527,7 +540,9 @@ function ProcedureForm({ procedure, onDirtyChange, onSaved }: { procedure: Proce
   const [base] = useState(procedure);
   const [f, setF] = useState(procedure);
   const [err, setErr] = useState<Record<string, string>>({});
-  const dirty = base.name !== f.name || base.category !== f.category || base.price !== f.price || base.durationMin !== f.durationMin;
+  const dirty =
+    base.name !== f.name || base.category !== f.category || base.price !== f.price || base.durationMin !== f.durationMin ||
+    !!base.onlineAllowed !== !!f.onlineAllowed || (base.onlinePrice ?? null) !== (f.onlinePrice ?? null);
   const cb = useRef(onDirtyChange);
   cb.current = onDirtyChange;
   useEffect(() => cb.current(dirty), [dirty]);
@@ -542,9 +557,10 @@ function ProcedureForm({ procedure, onDirtyChange, onSaved }: { procedure: Proce
         if (!f.name.trim()) er.name = "Informe o nome";
         if (!(f.price >= 0)) er.price = "Preço inválido";
         if (!(f.durationMin > 0)) er.durationMin = "Duração inválida";
+        if (f.onlinePrice !== undefined && !(f.onlinePrice >= 0)) er.onlinePrice = "Valor inválido";
         setErr(er);
         if (Object.keys(er).length) return;
-        upsertProcedure({ ...f, name: f.name.trim() });
+        upsertProcedure({ ...f, name: f.name.trim(), onlinePrice: f.onlineAllowed ? f.onlinePrice : undefined });
         toast("Procedimento salvo");
         onSaved();
       }}
@@ -564,7 +580,29 @@ function ProcedureForm({ procedure, onDirtyChange, onSaved }: { procedure: Proce
       <Field label="Preço (R$)" required error={err.price} hint="Usado em agendamentos, orçamentos, planos, IA e em todas as contas de valor">
         <Input type="number" value={f.price} onChange={(e) => setF({ ...f, price: Number(e.target.value) })} />
       </Field>
+      <OnlineFields value={f} onChange={(p) => setF({ ...f, ...p })} error={err.onlinePrice} />
     </form>
+  );
+}
+
+/** Teleconsulta no procedimento: se pode ser online e o valor online (vazio = mesmo valor). */
+function OnlineFields({ value, onChange, error }: { value: Partial<Procedure>; onChange: (p: Partial<Procedure>) => void; error?: string }) {
+  return (
+    <div className="space-y-3 rounded-xl border border-border p-3 sm:col-span-2">
+      <Switch checked={!!value.onlineAllowed} onChange={(v) => onChange({ onlineAllowed: v })} label="Pode ser feito online (vídeo com link ou WhatsApp)" />
+      {value.onlineAllowed && (
+        <Field label="Valor online (R$)" error={error} hint={`Deixe vazio para cobrar o mesmo valor do presencial (${money(value.price ?? 0)})`}>
+          <Input
+            type="number"
+            min={0}
+            value={value.onlinePrice ?? ""}
+            placeholder={String(value.price ?? 0)}
+            onChange={(e) => onChange({ onlinePrice: e.target.value === "" ? undefined : Number(e.target.value) })}
+            className="block sm:w-48"
+          />
+        </Field>
+      )}
+    </div>
   );
 }
 
@@ -633,6 +671,13 @@ function ProceduresSettings() {
     { key: "categoria", label: "Categoria", sortable: true, render: (p) => <Badge>{p.category}</Badge> },
     { key: "duracao", label: "Duração", sortable: true, className: "whitespace-nowrap tabular-nums", render: (p) => `${p.durationMin} min` },
     { key: "preco", label: "Preço", sortable: true, className: "whitespace-nowrap text-right tabular-nums", render: (p) => money(p.price) },
+    {
+      key: "online",
+      label: "Online",
+      className: "whitespace-nowrap",
+      render: (p) =>
+        p.onlineAllowed ? <Badge tone="info">Sim{p.onlinePrice ? ` · ${money(p.onlinePrice)}` : ""}</Badge> : <span className="text-[11px] text-muted">Só presencial</span>,
+    },
   ];
 
   return (
@@ -706,6 +751,7 @@ function ProceduresSettings() {
               <>
                 <Badge tone="primary">{money(selected.price)}</Badge>
                 <Badge>{selected.durationMin} min</Badge>
+                {selected.onlineAllowed && <Badge tone="info">Online{selected.onlinePrice ? ` · ${money(selected.onlinePrice)}` : ""}</Badge>}
               </>
             }
           />
@@ -772,6 +818,7 @@ function ProceduresSettings() {
             </Field>
             <Field label="Duração (min)"><Input type="number" step={15} value={editing.durationMin} onChange={(e) => setEditing({ ...editing, durationMin: Number(e.target.value) })} /></Field>
             <Field label="Preço (R$)" className="sm:col-span-2"><Input type="number" value={editing.price} onChange={(e) => setEditing({ ...editing, price: Number(e.target.value) })} /></Field>
+            <OnlineFields value={editing} onChange={(p) => setEditing({ ...editing, ...p })} />
           </div>
         </Modal>
       )}

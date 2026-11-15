@@ -16,7 +16,11 @@ interface Props {
   onSaved?: (p: Patient) => void;
 }
 
-const empty = { cpf: "", name: "", phone: "", email: "", birthDate: "", insurance: "Particular" as Insurance, source: "Instagram" as Source, note: "" };
+const empty = {
+  cpf: "", name: "", phone: "", email: "", birthDate: "", insurance: "Particular" as Insurance, source: "Instagram" as Source, note: "",
+  /** particular que pede reembolso ao plano */
+  reimb: false, reimbPlan: "", reimbCard: "",
+};
 type FormState = typeof empty;
 
 function fromPatient(patient?: Patient, initial?: Initial): FormState {
@@ -24,10 +28,13 @@ function fromPatient(patient?: Patient, initial?: Initial): FormState {
     return {
       cpf: maskCPF(patient.cpf), name: patient.name, phone: maskPhone(patient.phone), email: patient.email,
       birthDate: patient.birthDate, insurance: patient.insurance, source: patient.source, note: "",
+      reimb: !!patient.reimbursement, reimbPlan: patient.reimbursement?.plan ?? "", reimbCard: patient.reimbursement?.card ?? "",
     };
   }
   const insurance = (INSURANCES as readonly string[]).includes(initial?.insurance ?? "") ? (initial!.insurance as Insurance) : "Particular";
-  return { ...empty, name: initial?.name ?? "", phone: initial?.phone ? maskPhone(initial.phone) : "", source: initial?.source ?? "Instagram", insurance };
+  // a triagem da IA registra "Particular · pede reembolso"
+  const reimb = /reembolso/i.test(initial?.insurance ?? "");
+  return { ...empty, name: initial?.name ?? "", phone: initial?.phone ? maskPhone(initial.phone) : "", source: initial?.source ?? "Instagram", insurance, reimb };
 }
 
 /**
@@ -79,6 +86,7 @@ export function PatientForm({
     if (!/^\S+@\S+\.\S+$/.test(f.email)) e.email = "E-mail inválido";
     if (!f.birthDate) e.birthDate = "Data de nascimento é obrigatória";
     else if (new Date(f.birthDate) > new Date()) e.birthDate = "Data no futuro";
+    if (f.insurance === "Particular" && f.reimb && !f.reimbPlan.trim()) e.reimbPlan = "Informe o plano de saúde do reembolso";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -89,6 +97,7 @@ export function PatientForm({
     const data = {
       cpf: onlyDigits(f.cpf), name: f.name.trim(), phone: normalizePhone(f.phone), email: f.email.trim().toLowerCase(),
       birthDate: f.birthDate, insurance: f.insurance, source: f.source,
+      reimbursement: f.insurance === "Particular" && f.reimb ? { plan: f.reimbPlan.trim(), card: f.reimbCard.trim() || undefined } : undefined,
     };
     if (patient) {
       updatePatient(patient.id, data);
@@ -130,6 +139,27 @@ export function PatientForm({
             {SOURCES.map((i) => <option key={i}>{i}</option>)}
           </Select>
         </Field>
+        {f.insurance === "Particular" && (
+          <div className="space-y-3 rounded-xl border border-border p-3 sm:col-span-2">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={f.reimb} onChange={(e) => set("reimb", e.target.checked)} className="h-4 w-4 accent-[var(--color-primary)]" />
+              Pede reembolso ao plano de saúde
+            </label>
+            {f.reimb && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Plano do reembolso" required error={errors.reimbPlan}>
+                  <Input value={f.reimbPlan} onChange={(e) => set("reimbPlan", e.target.value)} placeholder="Ex.: SulAmérica Saúde" list="reimb-plans" />
+                  <datalist id="reimb-plans">
+                    {["SulAmérica Saúde", "Bradesco Saúde", "Amil", "Porto Saúde", "Omint", "Unimed", "Allianz Saúde", "Care Plus"].map((p) => <option key={p} value={p} />)}
+                  </datalist>
+                </Field>
+                <Field label="Nº da carteirinha" hint="Opcional; sai no recibo">
+                  <Input value={f.reimbCard} onChange={(e) => set("reimbCard", e.target.value)} />
+                </Field>
+              </div>
+            )}
+          </div>
+        )}
         {!patient && (
           <Field label="Observação inicial" className="sm:col-span-2">
             <Textarea value={f.note} onChange={(e) => set("note", e.target.value)} placeholder="Alergias, preferências, observações comerciais…" />
