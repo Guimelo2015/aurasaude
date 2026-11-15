@@ -20,7 +20,7 @@ Telas que não são lista de registros mantêm o layout próprio e ganham só a 
 | Tela | Botões |
 |---|---|
 | Dashboard | Paciente (cadastrar) · Agenda · Campanha · Atualizar |
-| Agenda | Agendar · Dia/semana anterior · Hoje · Próximo · Atualizar (Dia/Semana e profissional continuam no cabeçalho) |
+| Agenda | Agendar · Escolher data (calendário mensal com pontos nos dias com consulta, mês/ano e "Ir para" digitando a data) · Dia/semana anterior · Hoje · Próximo · Atualizar (Dia/Semana e profissional continuam no cabeçalho) |
 | Funil | Novo lead · Atualizar (busca e origem continuam no cabeçalho) |
 | Campanhas | Nova campanha · Modelos · Visão geral · Atualizar |
 | Atendimento e Meu dia | sem barra: as ações ficam no contexto (na conversa e em cada bloco do dia) |

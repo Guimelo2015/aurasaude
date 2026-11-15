@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { addDays, addMinutes, format, isSameDay, isToday, parseISO, setHours, setMinutes, startOfDay, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Ban, CalendarPlus, CalendarDays, Check, CheckCheck, ChevronLeft, ChevronRight, MessageCircle, RefreshCw, UserX, Video } from "lucide-react";
+import { Ban, CalendarPlus, CalendarDays, CalendarSearch, Check, CheckCheck, ChevronLeft, ChevronRight, MessageCircle, RefreshCw, UserX, Video } from "lucide-react";
 import { ToolButton, ToolSep, Toolbar } from "@/components/erp";
 import { Badge, Button, Card, Modal, PageHeader, Select, Tabs, toast } from "@/components/ui";
 import { AppointmentFormModal } from "@/components/forms/appointment-form";
+import { MiniCalendar } from "@/components/mini-calendar";
 import { useApp, useCurrentUser } from "@/lib/store";
 import { can } from "@/lib/permissions";
 import { APT_STATUS } from "@/lib/labels";
@@ -48,22 +49,62 @@ export default function AgendaPage() {
     faltas: dayApts.filter((a) => a.status === "faltou").length,
   };
 
+  const [picker, setPicker] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!picker) return;
+    const onDown = (e: MouseEvent) => {
+      if (!pickerRef.current?.contains(e.target as Node)) setPicker(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setPicker(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [picker]);
+  // Pontos do calendário: agendamentos (não cancelados) dos profissionais visíveis.
+  const aptCounts = useMemo(() => {
+    const ids = new Set(professionals.map((p) => p.id));
+    const out: Record<string, number> = {};
+    for (const a of appointments) {
+      if (a.status === "cancelado" || !ids.has(a.professionalId)) continue;
+      const k = format(parseISO(a.start), "yyyy-MM-dd");
+      out[k] = (out[k] ?? 0) + 1;
+    }
+    return out;
+  }, [appointments, professionals]);
+
   const shift = (n: number) => setDate((d) => addDays(d, view === "dia" ? n : n * 7));
   const hours = Array.from({ length: END_H - START_H }, (_, i) => START_H + i);
   const nowLine = (new Date().getHours() - START_H + new Date().getMinutes() / 60) * HOUR_PX;
 
   return (
     <div className="p-4 lg:p-6">
-      <div className="mb-4">
+      <div ref={pickerRef} className="relative mb-4">
         <Toolbar label="Ações da agenda">
           <ToolButton icon={CalendarPlus} label="Agendar" tone="primary" onClick={() => setCreate({ start: setHours(addDays(date, 0), 9), professionalId: view === "semana" ? weekProf : professionals[0]?.id })} />
           <ToolSep />
+          <ToolButton icon={CalendarSearch} label="Escolher data" onClick={() => setPicker((v) => !v)} />
           <ToolButton icon={ChevronLeft} label={view === "dia" ? "Dia anterior" : "Semana ant."} onClick={() => shift(-1)} />
           <ToolButton icon={CalendarDays} label="Hoje" onClick={() => setDate(startOfDay(new Date()))} />
           <ToolButton icon={ChevronRight} label={view === "dia" ? "Próximo dia" : "Próx. semana"} onClick={() => shift(1)} />
           <ToolSep />
           <ToolButton icon={RefreshCw} label="Atualizar" onClick={async () => { await useApp.persist.rehydrate(); toast("Dados atualizados"); }} />
         </Toolbar>
+        {picker && (
+          <div role="dialog" aria-label="Escolher data" className="absolute left-0 top-full z-30 mt-2 rounded-2xl border border-border bg-surface p-3 shadow-xl">
+            <MiniCalendar
+              value={date}
+              counts={aptCounts}
+              onChange={(d) => {
+                setDate(d);
+                setPicker(false);
+              }}
+            />
+          </div>
+        )}
       </div>
       <PageHeader
         title="Agenda"
