@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { addDays, addMinutes, format, isSameDay, isToday, parseISO, setHours, setMinutes, startOfDay, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Ban, CalendarPlus, Check, CheckCheck, ChevronLeft, ChevronRight, MessageCircle, UserX, Video } from "lucide-react";
+import { Ban, CalendarPlus, CalendarDays, Check, CheckCheck, ChevronLeft, ChevronRight, MessageCircle, RefreshCw, UserX, Video } from "lucide-react";
+import { ToolButton, ToolSep, Toolbar } from "@/components/erp";
 import { Badge, Button, Card, Modal, PageHeader, Select, Tabs, toast } from "@/components/ui";
 import { AppointmentFormModal } from "@/components/forms/appointment-form";
 import { useApp, useCurrentUser } from "@/lib/store";
@@ -53,6 +54,17 @@ export default function AgendaPage() {
 
   return (
     <div className="p-4 lg:p-6">
+      <div className="mb-4">
+        <Toolbar label="Ações da agenda">
+          <ToolButton icon={CalendarPlus} label="Agendar" tone="primary" onClick={() => setCreate({ start: setHours(addDays(date, 0), 9), professionalId: view === "semana" ? weekProf : professionals[0]?.id })} />
+          <ToolSep />
+          <ToolButton icon={ChevronLeft} label={view === "dia" ? "Dia anterior" : "Semana ant."} onClick={() => shift(-1)} />
+          <ToolButton icon={CalendarDays} label="Hoje" onClick={() => setDate(startOfDay(new Date()))} />
+          <ToolButton icon={ChevronRight} label={view === "dia" ? "Próximo dia" : "Próx. semana"} onClick={() => shift(1)} />
+          <ToolSep />
+          <ToolButton icon={RefreshCw} label="Atualizar" onClick={async () => { await useApp.persist.rehydrate(); toast("Dados atualizados"); }} />
+        </Toolbar>
+      </div>
       <PageHeader
         title="Agenda"
         subtitle={view === "dia" ? format(date, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR }) : `Semana de ${format(days[0], "dd/MM")} a ${format(days[5], "dd/MM")}`}
@@ -64,14 +76,6 @@ export default function AgendaPage() {
                 {professionals.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </Select>
             )}
-            <div className="flex items-center gap-1">
-              <Button variant="outline" size="icon" onClick={() => shift(-1)} aria-label="Anterior"><ChevronLeft size={16} /></Button>
-              <Button variant="outline" onClick={() => setDate(startOfDay(new Date()))}>Hoje</Button>
-              <Button variant="outline" size="icon" onClick={() => shift(1)} aria-label="Próximo"><ChevronRight size={16} /></Button>
-            </div>
-            <Button onClick={() => setCreate({ start: setHours(addDays(date, 0), 9), professionalId: view === "semana" ? weekProf : professionals[0]?.id })}>
-              <CalendarPlus size={15} /> Agendar
-            </Button>
           </>
         }
       />

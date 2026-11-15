@@ -5,7 +5,8 @@ import Link from "next/link";
 import { format, isSameDay, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Bot, CalendarCheck, CalendarDays, DollarSign, Megaphone, TrendingUp, UserPlus, UserX, Users } from "lucide-react";
+import { Bot, CalendarCheck, CalendarDays, DollarSign, Megaphone, RefreshCw, TrendingUp, UserPlus, UserX, Users } from "lucide-react";
+import { ToolButton, ToolSep, Toolbar } from "@/components/erp";
 import { Avatar, Badge, Button, Card, CardHeader, Field, Modal, Select, Textarea, toast } from "@/components/ui";
 import { PatientFormModal } from "@/components/forms/patient-form";
 import { useApp, useCurrentUser } from "@/lib/store";
@@ -66,11 +67,13 @@ export default function DashboardPage() {
           <h1 className="text-xl font-semibold tracking-tight">{hello}, {user?.name.split(" ").slice(0, 2).join(" ")} 👋</h1>
           <p className="text-sm text-muted">{capitalizeFirst(format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR }))} · visão geral da clínica</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {can(user?.role, "pacientes.edit") && <Button variant="outline" onClick={() => setPatientOpen(true)}><UserPlus size={15} /> Cadastrar paciente</Button>}
-          <Link href="/agenda"><Button variant="outline"><CalendarDays size={15} /> Ver agenda</Button></Link>
-          {can(user?.role, "campanhas.edit") && <Button onClick={() => openCampaignDraft(router.push, {})}><Megaphone size={15} /> Disparar campanha</Button>}
-        </div>
+        <Toolbar label="Atalhos do dashboard">
+          {can(user?.role, "pacientes.edit") && <ToolButton icon={UserPlus} label="Paciente" tone="primary" onClick={() => setPatientOpen(true)} />}
+          <ToolButton icon={CalendarDays} label="Agenda" onClick={() => router.push("/agenda")} />
+          {can(user?.role, "campanhas.edit") && <ToolButton icon={Megaphone} label="Campanha" onClick={() => openCampaignDraft(router.push, {})} />}
+          <ToolSep />
+          <ToolButton icon={RefreshCw} label="Atualizar" onClick={async () => { await useApp.persist.rehydrate(); toast("Dados atualizados"); }} />
+        </Toolbar>
       </div>
 
       {urgent.length > 0 && !isProf && (

@@ -1,48 +1,72 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Field, Input, Modal, Select, Textarea, toast } from "../ui";
 import { useApp } from "@/lib/store";
 import { INSURANCES, SOURCES, type Insurance, type Patient, type Source } from "@/lib/types";
 import { isValidCPF, maskCPF, maskPhone, normalizePhone, onlyDigits } from "@/lib/utils";
 
+type Initial = Partial<Pick<Patient, "name" | "phone" | "source">> & { insurance?: string };
+
 interface Props {
   open: boolean;
   onClose: () => void;
   patient?: Patient;
-  initial?: Partial<Pick<Patient, "name" | "phone" | "source">> & { insurance?: string };
+  initial?: Initial;
   onSaved?: (p: Patient) => void;
 }
 
 const empty = { cpf: "", name: "", phone: "", email: "", birthDate: "", insurance: "Particular" as Insurance, source: "Instagram" as Source, note: "" };
+type FormState = typeof empty;
 
-export function PatientFormModal({ open, onClose, patient, initial, onSaved }: Props) {
+function fromPatient(patient?: Patient, initial?: Initial): FormState {
+  if (patient) {
+    return {
+      cpf: maskCPF(patient.cpf), name: patient.name, phone: maskPhone(patient.phone), email: patient.email,
+      birthDate: patient.birthDate, insurance: patient.insurance, source: patient.source, note: "",
+    };
+  }
+  const insurance = (INSURANCES as readonly string[]).includes(initial?.insurance ?? "") ? (initial!.insurance as Insurance) : "Particular";
+  return { ...empty, name: initial?.name ?? "", phone: initial?.phone ? maskPhone(initial.phone) : "", source: initial?.source ?? "Instagram", insurance };
+}
+
+/**
+ * Formulário do paciente (mesmas validações de sempre: CPF obrigatório, válido e único).
+ * Fica direto na ficha (seção Dados) ou dentro da janela, ligado aos botões pelo atributo `form`.
+ * Para "Cancelar", o pai remonta o componente (key) e todos os campos voltam ao valor salvo.
+ */
+export function PatientForm({
+  formId,
+  patient,
+  initial,
+  onSaved,
+  onDirtyChange,
+  readOnly,
+  autoFocus,
+}: {
+  formId: string;
+  patient?: Patient;
+  initial?: Initial;
+  onSaved?: (p: Patient) => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  readOnly?: boolean;
+  autoFocus?: boolean;
+}) {
   const patients = useApp((s) => s.patients);
   const addPatient = useApp((s) => s.addPatient);
   const updatePatient = useApp((s) => s.updatePatient);
   const addNote = useApp((s) => s.addPatientNote);
-  const [f, setF] = useState(empty);
+  // valor salvo, capturado ao montar
+  const [base] = useState(() => fromPatient(patient, initial));
+  const [f, setF] = useState(base);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  // lê `initial` só no momento de abrir (o pai recria o objeto a cada render)
-  const initialRef = useRef(initial);
-  initialRef.current = initial;
 
-  useEffect(() => {
-    const initial = initialRef.current;
-    if (!open) return;
-    setErrors({});
-    if (patient) {
-      setF({
-        cpf: maskCPF(patient.cpf), name: patient.name, phone: maskPhone(patient.phone), email: patient.email,
-        birthDate: patient.birthDate, insurance: patient.insurance, source: patient.source, note: "",
-      });
-    } else {
-      const insurance = (INSURANCES as readonly string[]).includes(initial?.insurance ?? "") ? (initial!.insurance as Insurance) : "Particular";
-      setF({ ...empty, name: initial?.name ?? "", phone: initial?.phone ? maskPhone(initial.phone) : "", source: initial?.source ?? "Instagram", insurance });
-    }
-  }, [open, patient]);
+  const dirty = useMemo(() => (Object.keys(base) as (keyof FormState)[]).some((k) => base[k] !== f[k]), [base, f]);
+  const dirtyCb = useRef(onDirtyChange);
+  dirtyCb.current = onDirtyChange;
+  useEffect(() => dirtyCb.current?.(dirty), [dirty]);
 
-  const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((s) => ({ ...s, [k]: v }));
+  const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setF((s) => ({ ...s, [k]: v }));
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -59,8 +83,9 @@ export function PatientFormModal({ open, onClose, patient, initial, onSaved }: P
     return Object.keys(e).length === 0;
   };
 
-  const save = () => {
-    if (!validate()) return;
+  const save = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (readOnly || !validate()) return;
     const data = {
       cpf: onlyDigits(f.cpf), name: f.name.trim(), phone: normalizePhone(f.phone), email: f.email.trim().toLowerCase(),
       birthDate: f.birthDate, insurance: f.insurance, source: f.source,
@@ -75,25 +100,13 @@ export function PatientFormModal({ open, onClose, patient, initial, onSaved }: P
       toast("Paciente cadastrado");
       onSaved?.(p);
     }
-    onClose();
   };
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={patient ? "Editar paciente" : "Novo paciente"}
-      subtitle="Campos com * são obrigatórios"
-      footer={
-        <>
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={save}>{patient ? "Salvar alterações" : "Cadastrar paciente"}</Button>
-        </>
-      }
-    >
-      <div className="grid gap-4 sm:grid-cols-2">
+    <form id={formId} onSubmit={save} noValidate>
+      <fieldset disabled={readOnly} className="grid gap-4 sm:grid-cols-2">
         <Field label="Nome completo" required error={errors.name} className="sm:col-span-2">
-          <Input value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="Ex.: Maria Aparecida Souza" autoFocus />
+          <Input value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="Ex.: Maria Aparecida Souza" autoFocus={autoFocus} />
         </Field>
         <Field label="CPF" required error={errors.cpf}>
           <Input value={f.cpf} onChange={(e) => set("cpf", maskCPF(e.target.value))} placeholder="000.000.000-00" inputMode="numeric" />
@@ -122,7 +135,44 @@ export function PatientFormModal({ open, onClose, patient, initial, onSaved }: P
             <Textarea value={f.note} onChange={(e) => set("note", e.target.value)} placeholder="Alergias, preferências, observações comerciais…" />
           </Field>
         )}
-      </div>
+      </fieldset>
+    </form>
+  );
+}
+
+/** Mesma janela de antes (usada no Atendimento, Funil, Dashboard e na lista de Pacientes). */
+export function PatientFormModal({ open, onClose, patient, initial, onSaved }: Props) {
+  // remonta o formulário a cada abertura, com os dados do momento
+  const [mount, setMount] = useState(0);
+  useEffect(() => {
+    if (open) setMount((m) => m + 1);
+  }, [open, patient]);
+  const formId = "patient-form-modal";
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={patient ? "Editar paciente" : "Novo paciente"}
+      subtitle="Campos com * são obrigatórios"
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button type="submit" form={formId}>{patient ? "Salvar alterações" : "Cadastrar paciente"}</Button>
+        </>
+      }
+    >
+      <PatientForm
+        key={mount}
+        formId={formId}
+        patient={patient}
+        initial={initial}
+        autoFocus
+        onSaved={(p) => {
+          onSaved?.(p);
+          onClose();
+        }}
+      />
     </Modal>
   );
 }

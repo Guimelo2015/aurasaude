@@ -8,7 +8,8 @@ import { isRecoverable, RECOVERABLE_WINDOW_DAYS } from "@/lib/campaigns";
 import { can } from "@/lib/permissions";
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, DragOverlay, type DragStartEvent } from "@dnd-kit/core";
 import { differenceInDays, parseISO, subDays } from "date-fns";
-import { CalendarCheck, Clock, FileText, MessageCircle, Plus, Search, Send, UserRound } from "lucide-react";
+import { CalendarCheck, Clock, FileText, MessageCircle, Plus, RefreshCw, Search, Send, UserRound } from "lucide-react";
+import { ToolButton, ToolSep, Toolbar } from "@/components/erp";
 import { Avatar, Badge, Button, Field, Input, Modal, PageHeader, Select, Textarea, toast } from "@/components/ui";
 import { AppointmentFormModal } from "@/components/forms/appointment-form";
 import { PatientFormModal } from "@/components/forms/patient-form";
@@ -70,6 +71,13 @@ export default function FunilPage() {
 
   return (
     <div className="flex h-full flex-col p-4 lg:p-6">
+      <div className="mb-4">
+        <Toolbar label="Ações do funil">
+          <ToolButton icon={Plus} label="Novo lead" tone="primary" onClick={() => setNewOpen(true)} />
+          <ToolSep />
+          <ToolButton icon={RefreshCw} label="Atualizar" onClick={async () => { await useApp.persist.rehydrate(); toast("Dados atualizados"); }} />
+        </Toolbar>
+      </div>
       <PageHeader
         title="Funil de pacientes"
         subtitle={`Jornada do primeiro contato ao procedimento · ${moneyCompact(openValue)} em negociação`}
@@ -83,7 +91,6 @@ export default function FunilPage() {
               <option value="">Todas as origens</option>
               {SOURCES.map((s) => <option key={s}>{s}</option>)}
             </Select>
-            <Button onClick={() => setNewOpen(true)}><Plus size={15} /> Novo lead</Button>
           </>
         }
       />

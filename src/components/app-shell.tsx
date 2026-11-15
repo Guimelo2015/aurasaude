@@ -1,14 +1,15 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { ChevronsUpDown, LogOut, Menu, RotateCcw, Search, X } from "lucide-react";
 import { Logo } from "./logo";
 import { ThemeToggle } from "./theme-toggle";
 import { Avatar, Badge, Button, toast } from "./ui";
 import { CommandPalette } from "./command-palette";
-import { NAV } from "./nav";
+import { NAV, resolveNav } from "./nav";
+import { SidebarNav } from "./sidebar-nav";
+import { TopTabs } from "./top-tabs";
 import { useApp, useCurrentUser, useHydrated } from "@/lib/store";
 import { can, ROLE_LABEL } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const hydrated = useHydrated();
   const user = useCurrentUser();
   const pathname = usePathname();
+  const search = useSearchParams();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -51,7 +53,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pendingChats = useApp((s) => s.conversations.filter((c) => c.queue === "novo" || (c.queue !== "finalizado" && c.unread > 0)).length);
 
   const allowed = NAV.filter((n) => can(user?.role, n.perm));
-  const current = NAV.find((n) => pathname.startsWith(n.href));
+  const nav = resolveNav(pathname, search);
+  const current = nav.item;
 
   useEffect(() => {
     if (!hydrated) return;
@@ -84,30 +87,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <p className="text-[10px] uppercase tracking-wider text-muted">Clínica</p>
         <p className="truncate text-sm font-medium">{clinic.name}</p>
       </div>
-      <nav className="flex-1 space-y-0.5 px-3">
-        {allowed.map((n) => {
-          const active = pathname.startsWith(n.href);
-          return (
-            <Link
-              key={n.href}
-              href={n.href}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition",
-                active ? "bg-primary-soft text-primary-strong" : "text-muted hover:bg-surface-2 hover:text-fg",
-              )}
-            >
-              <n.icon size={18} />
-              <span className="flex-1">{n.label}</span>
-              {n.href === "/atendimento" && pendingChats > 0 && (
-                <span className="rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-fg">{pendingChats}</span>
-              )}
-              {n.href === "/hoje" && pendingTasks > 0 && (
-                <span className="rounded-full bg-warning px-1.5 text-[10px] font-semibold text-white">{pendingTasks}</span>
-              )}
-            </Link>
-          );
-        })}
-      </nav>
+      <SidebarNav role={user.role} badges={{ "/atendimento": pendingChats, "/hoje": pendingTasks }} />
       <div className="relative border-t border-border p-3">
         <button onClick={() => setMenuOpen((v) => !v)} className="flex w-full items-center gap-2.5 rounded-lg p-2 text-left hover:bg-surface-2 cursor-pointer">
           <Avatar name={user.name} size={32} />
@@ -160,7 +140,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Abrir menu">
             <Menu size={18} />
           </Button>
-          <p className="text-sm font-medium">{current?.label}</p>
+          <p className="text-sm font-medium">{nav.title}</p>
           <button
             onClick={() => setSearchOpen(true)}
             className="ml-4 hidden h-8 w-72 items-center gap-2 rounded-lg border border-border bg-surface-2/60 px-3 text-xs text-muted transition hover:border-primary/40 md:flex cursor-pointer"
@@ -176,6 +156,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <ThemeToggle />
           </div>
         </header>
+        <TopTabs role={user.role} fallbackHref={allowed[0]?.href ?? "/login"} />
         <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
       </div>
       <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} />

@@ -34,12 +34,12 @@ export function TagChip({ tag, onRemove, small }: { tag: Tag; onRemove?: () => v
   );
 }
 
-export function TagList({ ids, max = 3 }: { ids: ID[]; max?: number }) {
+export function TagList({ ids, max = 3, nowrap }: { ids: ID[]; max?: number; nowrap?: boolean }) {
   const tags = useApp((s) => s.tags);
   const list = ids.map((id) => tags.find((t) => t.id === id)).filter(Boolean) as Tag[];
   if (!list.length) return null;
   return (
-    <span className="inline-flex flex-wrap gap-1">
+    <span className={nowrap ? "inline-flex items-center gap-1 whitespace-nowrap" : "inline-flex flex-wrap gap-1"}>
       {list.slice(0, max).map((t) => <TagChip key={t.id} tag={t} small />)}
       {list.length > max && <span className="text-[10px] text-muted">+{list.length - max}</span>}
     </span>

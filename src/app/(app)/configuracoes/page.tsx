@@ -1,30 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Bot, Loader2, Pencil, Plus, QrCode, Smartphone, Trash2, Unplug, X } from "lucide-react";
-import { Avatar, Badge, Button, Card, CardHeader, Field, Input, Modal, PageHeader, Select, Switch, Tabs, Textarea, toast } from "@/components/ui";
-import { useApp } from "@/lib/store";
-import { ROLE_LABEL } from "@/lib/permissions";
-import { PROCEDURE_CATEGORIES, type AiAgentConfig, type Procedure, type WhatsAppInstance } from "@/lib/types";
-import { maskPhone, money, normalizePhone } from "@/lib/utils";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Bot, ChevronLeft, ChevronRight, Loader2, Pencil, Plus, QrCode, RefreshCw, Save, Search, Smartphone, Trash2, Undo2, Unplug, UserCheck, UserX, X,
+} from "lucide-react";
+import { useUrlTab } from "@/lib/use-url-tab";
+import { Avatar, Badge, Button, Card, CardHeader, Empty, Field, Input, Modal, PageHeader, Select, Switch, Textarea, toast } from "@/components/ui";
+import { CadastroHeader, DataGrid, GridFooter, RecordTabs, SectionTabs, ToolButton, ToolSep, Toolbar, type Column } from "@/components/erp";
+import { useQuery } from "@/lib/use-query";
+import { useApp, useCurrentUser } from "@/lib/store";
+import { can, ROLE_LABEL, type Permission } from "@/lib/permissions";
+import { PROCEDURE_CATEGORIES, type AiAgentConfig, type Procedure, type Role, type User, type WhatsAppInstance } from "@/lib/types";
+import { cn, maskPhone, money, normalizePhone } from "@/lib/utils";
 
 type Tab = "whatsapp" | "ia" | "usuarios" | "procedimentos";
 
 export default function ConfiguracoesPage() {
-  const [tab, setTab] = useState<Tab>("whatsapp");
+  const [tab] = useUrlTab<Tab>(["whatsapp", "ia", "usuarios", "procedimentos"], "whatsapp");
   return (
     <div className="space-y-5 p-4 lg:p-6">
-      <PageHeader title="Configurações" subtitle="Conexões, agente de IA, equipe e catálogo" />
-      <Tabs
-        value={tab}
-        onChange={setTab}
-        items={[
-          { value: "whatsapp", label: "Números de WhatsApp" },
-          { value: "ia", label: "Agente de IA" },
-          { value: "usuarios", label: "Usuários" },
-          { value: "procedimentos", label: "Procedimentos" },
-        ]}
-      />
+      {/* Usuários e Procedimentos seguem o padrão Registros/Cadastro: a barra de ações fica no topo */}
+      {tab !== "usuarios" && tab !== "procedimentos" && <PageHeader title="Configurações" subtitle="Conexões, agente de IA, equipe e catálogo" />}
       {tab === "whatsapp" && <WhatsAppSettings />}
       {tab === "ia" && <AiSettings />}
       {tab === "usuarios" && <UsersSettings />}
@@ -264,86 +260,462 @@ function AiSettings() {
 }
 
 // ---------------------------------------------------------------
+// Registros / Cadastro dentro de Configurações (?aba=usuarios|procedimentos&modo=cadastro&sel=…)
+function useRecordQuery() {
+  const { params, get, set } = useQuery();
+  const modo: "registros" | "cadastro" = get("modo") === "cadastro" ? "cadastro" : "registros";
+  const hrefWith = (patch: Record<string, string | null>) => {
+    const p = new URLSearchParams(params.toString());
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === null || v === "") p.delete(k);
+      else p.set(k, v);
+    }
+    return `/configuracoes?${p.toString()}`;
+  };
+  const sort = (key: string, cur: string, dir: string) => set({ ordem: key, dir: cur === key && dir === "asc" ? "desc" : "asc" });
+  return { params, get, set, modo, hrefWith, sort };
+}
+
+function cmp(a: string | number, b: string | number) {
+  return typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b));
+}
+
+// ─── Usuários ──────────────────────────────────────────────────
+const PERM_LABELS: { perm: Permission; label: string }[] = [
+  { perm: "hoje.view", label: "Meu dia" },
+  { perm: "dashboard.view", label: "Dashboard" },
+  { perm: "financeiro.view", label: "Valores e financeiro" },
+  { perm: "atendimento.view", label: "Atendimento WhatsApp" },
+  { perm: "funil.view", label: "Funil" },
+  { perm: "campanhas.view", label: "Ver campanhas" },
+  { perm: "campanhas.edit", label: "Criar, lançar, pausar e excluir campanhas" },
+  { perm: "agenda.view", label: "Agenda" },
+  { perm: "agenda.all", label: "Agenda de todos os profissionais" },
+  { perm: "pacientes.view", label: "Pacientes" },
+  { perm: "pacientes.all", label: "Todos os pacientes (não só os próprios)" },
+  { perm: "pacientes.edit", label: "Cadastrar e editar pacientes" },
+  { perm: "relatorios.view", label: "Relatórios" },
+  { perm: "config.view", label: "Configurações" },
+];
+
 function UsersSettings() {
   const users = useApp((s) => s.users);
   const professionals = useApp((s) => s.professionals);
   const toggle = useApp((s) => s.toggleUser);
+  const me = useCurrentUser();
+  const R = useRecordQuery();
+  const [q, setQ] = useState(R.get("q"));
+  const perfil = R.get("perfil") as Role | "";
+  const ordem = R.get("ordem") || "nome";
+  const dir = R.get("dir") === "desc" ? "desc" : "asc";
+  const sel = R.get("sel");
+
+  const profOf = (u: User) => professionals.find((p) => p.id === u.professionalId);
+  const qq = R.get("q");
+  const list = useMemo(() => {
+    const s = qq.trim().toLowerCase();
+    const key = (u: User) => (ordem === "perfil" ? ROLE_LABEL[u.role] : ordem === "situacao" ? (u.active ? 0 : 1) : ordem === "email" ? u.email : u.name);
+    return users
+      .filter((u) => (!perfil || u.role === perfil) && (!s || u.name.toLowerCase().includes(s) || u.email.includes(s)))
+      .sort((a, b) => (cmp(key(a), key(b)) || a.name.localeCompare(b.name)) * (dir === "desc" ? -1 : 1));
+  }, [users, perfil, ordem, dir, qq]);
+  const selected = users.find((u) => u.id === sel);
+  const pos = list.findIndex((u) => u.id === sel);
+  const isSelf = !!selected && selected.id === me?.id;
+  const secao = R.get("secao") === "permissoes" ? "permissoes" : "dados";
+
+  const move = (d: number) => {
+    const next = list[pos < 0 ? 0 : pos + d];
+    if (next) R.set({ sel: next.id });
+  };
+  const noSel = "Selecione um usuário na lista";
+
+  const columns: Column<User>[] = [
+    {
+      key: "nome",
+      label: "Usuário",
+      sortable: true,
+      render: (u) => (
+        <div className="flex items-center gap-2">
+          <Avatar name={u.name} size={22} />
+          <span className="font-medium">{u.name}</span>
+          {u.id === me?.id && <span className="text-[11px] text-muted">(você)</span>}
+        </div>
+      ),
+    },
+    { key: "email", label: "E-mail", sortable: true, render: (u) => u.email },
+    {
+      key: "perfil",
+      label: "Perfil",
+      sortable: true,
+      render: (u) => <Badge tone={u.role === "admin" ? "violet" : u.role === "recepcao" ? "info" : "primary"}>{ROLE_LABEL[u.role]}</Badge>,
+    },
+    { key: "prof", label: "Especialidade", render: (u) => profOf(u)?.specialty ?? <span className="text-muted">—</span> },
+    { key: "situacao", label: "Situação", sortable: true, render: (u) => <Badge tone={u.active ? "success" : "neutral"}>{u.active ? "Ativo" : "Inativo"}</Badge> },
+  ];
+
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      <Card className="lg:col-span-2">
-        <CardHeader title="Equipe" subtitle="Usuários com acesso ao sistema" action={<Button size="sm" onClick={() => toast("Convite por e-mail disponível na versão com backend", "info")}><Plus size={13} /> Convidar</Button>} />
-        <div className="divide-y divide-border px-2 pb-2">
-          {users.map((u) => (
-            <div key={u.id} className="flex items-center gap-3 px-3 py-3">
-              <Avatar name={u.name} size={36} />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">{u.name}</p>
-                <p className="truncate text-xs text-muted">{u.email}{u.professionalId && ` · ${professionals.find((p) => p.id === u.professionalId)?.specialty}`}</p>
-              </div>
-              <Badge tone={u.role === "admin" ? "violet" : u.role === "recepcao" ? "info" : "primary"}>{ROLE_LABEL[u.role]}</Badge>
-              <Switch checked={u.active} onChange={() => toggle(u.id)} />
+    <div className="space-y-3">
+      <Toolbar label="Ações de usuários">
+        <ToolButton icon={Plus} label="Adicionar" tone="primary" disabled reason="Convites por e-mail entram com o backend (fase 2)" />
+        <ToolSep />
+        <ToolButton icon={Pencil} label="Alterar" disabled={!selected || R.modo === "cadastro"} reason={!selected ? noSel : "Você já está no cadastro"} onClick={() => R.set({ modo: "cadastro" })} />
+        <ToolSep />
+        <ToolButton
+          icon={selected?.active ? UserX : UserCheck}
+          label={selected?.active === false ? "Ativar" : "Desativar"}
+          tone={selected?.active ? "danger" : "primary"}
+          disabled={!selected || isSelf}
+          reason={!selected ? noSel : "Você não pode desativar a si mesmo"}
+          onClick={() => {
+            if (!selected) return;
+            toggle(selected.id);
+            toast(selected.active ? `${selected.name} perdeu o acesso` : `${selected.name} voltou a ter acesso`);
+          }}
+        />
+        <ToolSep />
+        <ToolButton icon={RefreshCw} label="Atualizar" onClick={async () => { await useApp.persist.rehydrate(); toast("Dados atualizados"); }} />
+        <ToolSep />
+        <ToolButton icon={ChevronLeft} label="Anterior" disabled={pos <= 0} reason={pos < 0 ? noSel : "Primeiro registro da lista"} onClick={() => move(-1)} />
+        <ToolButton icon={ChevronRight} label="Próximo" disabled={pos >= list.length - 1} reason="Último registro da lista" onClick={() => move(1)} />
+      </Toolbar>
+
+      <RecordTabs
+        value={R.modo}
+        registrosHref={R.hrefWith({ modo: null, secao: null })}
+        cadastroHref={selected ? R.hrefWith({ modo: "cadastro" }) : undefined}
+        cadastroReason={noSel}
+      />
+
+      {R.modo === "registros" || !selected ? (
+        <Card className="overflow-hidden rounded-2xl">
+          <div className="flex flex-wrap items-center gap-2 border-b border-border p-2.5">
+            <div className="relative min-w-56 flex-1">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+              <Input value={q} onChange={(e) => { setQ(e.target.value); R.set({ q: e.target.value }); }} placeholder="Buscar por nome ou e-mail…" className="h-8 pl-8 text-[13px]" />
             </div>
-          ))}
-        </div>
-      </Card>
-      <Card>
-        <CardHeader title="Permissões por perfil" />
-        <div className="space-y-3 px-5 pb-5 text-xs">
-          {[
-            ["Administrador", "Acesso total: dashboard, financeiro, relatórios, configurações, atendimento, funil, agenda e pacientes."],
-            ["Recepção", "Atendimento WhatsApp, funil, agenda de todos e cadastro de pacientes. Sem relatórios financeiros e configurações."],
-            ["Profissional", "Própria agenda, seus pacientes e prontuário comercial (sem valores da clínica)."],
-          ].map(([r, d]) => (
-            <div key={r}>
-              <p className="font-semibold text-fg">{r}</p>
-              <p className="mt-0.5 leading-relaxed text-muted">{d}</p>
-            </div>
-          ))}
-        </div>
-      </Card>
+            <Select value={perfil} onChange={(e) => R.set({ perfil: e.target.value })} className="h-8 w-full text-[13px] sm:w-44" aria-label="Perfil">
+              <option value="">Todos os perfis</option>
+              {(Object.keys(ROLE_LABEL) as Role[]).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+            </Select>
+            {(R.get("q") || perfil) && (
+              <Button size="sm" variant="ghost" className="rounded-full" onClick={() => { setQ(""); R.set({ q: null, perfil: null }); }}>
+                <X size={12} /> Limpar filtros
+              </Button>
+            )}
+          </div>
+          <DataGrid
+            label="Usuários"
+            columns={columns}
+            rows={list}
+            selectedId={sel}
+            onSelect={(id) => R.set({ sel: id })}
+            onOpen={(id) => R.set({ sel: id, modo: "cadastro" })}
+            sort={ordem}
+            dir={dir}
+            onSort={(k) => R.sort(k, ordem, dir)}
+            empty={<Empty title="Nenhum usuário encontrado" />}
+          />
+          <GridFooter total={list.length} page={0} pages={1} onPage={() => {}} noun="usuário(s)" />
+        </Card>
+      ) : (
+        <>
+          <CadastroHeader
+            kicker={`Usuário · ${ROLE_LABEL[selected.role]}`}
+            title={selected.name}
+            leading={<Avatar name={selected.name} size={48} />}
+            position={{ index: pos, total: list.length }}
+            meta={
+              <>
+                <Badge tone={selected.active ? "success" : "neutral"}>{selected.active ? "Ativo" : "Inativo"}</Badge>
+                {isSelf && <Badge tone="info">Você</Badge>}
+                <span className="text-[11px] text-muted">{selected.email}</span>
+              </>
+            }
+          />
+          <SectionTabs
+            value={secao}
+            onChange={(s) => R.set({ secao: s === "dados" ? null : s })}
+            items={[{ value: "dados", label: "Dados" }, { value: "permissoes", label: "Permissões" }]}
+          />
+          {secao === "dados" ? (
+            <Card className="rounded-2xl p-5">
+              <dl className="grid gap-4 text-sm sm:grid-cols-2">
+                {[
+                  ["Nome", selected.name],
+                  ["E-mail de acesso", selected.email],
+                  ["Perfil", ROLE_LABEL[selected.role]],
+                  ["Profissional vinculado", profOf(selected) ? `${profOf(selected)!.name} · ${profOf(selected)!.specialty}` : "—"],
+                ].map(([k, v]) => (
+                  <div key={k}>
+                    <dt className="text-xs text-muted">{k}</dt>
+                    <dd className="mt-0.5 font-medium">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+              <p className="mt-5 rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted">
+                Nome, e-mail e perfil são definidos no convite. A edição entra com o backend (fase 2). Aqui você controla o acesso pelo botão Ativar / Desativar.
+              </p>
+            </Card>
+          ) : (
+            <Card className="rounded-2xl p-5">
+              <p className="mb-3 text-xs text-muted">O que o perfil <b className="text-fg">{ROLE_LABEL[selected.role]}</b> pode fazer (mesma matriz usada em todo o sistema):</p>
+              <ul className="grid gap-1.5 text-[13px] sm:grid-cols-2">
+                {PERM_LABELS.map(({ perm, label }) => {
+                  const ok = can(selected.role, perm);
+                  return (
+                    <li key={perm} className={cn("flex items-center gap-2", !ok && "text-muted line-through decoration-border")}>
+                      <span className={cn("grid h-4 w-4 place-items-center rounded-full text-[10px]", ok ? "bg-success-soft text-success" : "bg-surface-2")}>{ok ? "✓" : "–"}</span>
+                      {label}
+                    </li>
+                  );
+                })}
+              </ul>
+            </Card>
+          )}
+        </>
+      )}
     </div>
   );
 }
 
-// ---------------------------------------------------------------
+// ─── Procedimentos ─────────────────────────────────────────────
+const PROC_FORM = "procedure-form";
+
+function ProcedureForm({ procedure, onDirtyChange, onSaved }: { procedure: Procedure; onDirtyChange: (d: boolean) => void; onSaved: () => void }) {
+  const upsertProcedure = useApp((s) => s.upsertProcedure);
+  const [base] = useState(procedure);
+  const [f, setF] = useState(procedure);
+  const [err, setErr] = useState<Record<string, string>>({});
+  const dirty = base.name !== f.name || base.category !== f.category || base.price !== f.price || base.durationMin !== f.durationMin;
+  const cb = useRef(onDirtyChange);
+  cb.current = onDirtyChange;
+  useEffect(() => cb.current(dirty), [dirty]);
+
+  return (
+    <form
+      id={PROC_FORM}
+      noValidate
+      onSubmit={(e) => {
+        e.preventDefault();
+        const er: Record<string, string> = {};
+        if (!f.name.trim()) er.name = "Informe o nome";
+        if (!(f.price >= 0)) er.price = "Preço inválido";
+        if (!(f.durationMin > 0)) er.durationMin = "Duração inválida";
+        setErr(er);
+        if (Object.keys(er).length) return;
+        upsertProcedure({ ...f, name: f.name.trim() });
+        toast("Procedimento salvo");
+        onSaved();
+      }}
+      className="grid gap-4 sm:grid-cols-2"
+    >
+      <Field label="Nome" required error={err.name} className="sm:col-span-2">
+        <Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+      </Field>
+      <Field label="Categoria">
+        <Select value={f.category} onChange={(e) => setF({ ...f, category: e.target.value as Procedure["category"] })}>
+          {PROCEDURE_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+        </Select>
+      </Field>
+      <Field label="Duração (min)" required error={err.durationMin}>
+        <Input type="number" step={15} value={f.durationMin} onChange={(e) => setF({ ...f, durationMin: Number(e.target.value) })} />
+      </Field>
+      <Field label="Preço (R$)" required error={err.price} hint="Usado em agendamentos, orçamentos, planos, IA e em todas as contas de valor">
+        <Input type="number" value={f.price} onChange={(e) => setF({ ...f, price: Number(e.target.value) })} />
+      </Field>
+    </form>
+  );
+}
+
 function ProceduresSettings() {
   const procedures = useApp((s) => s.procedures);
+  const appointments = useApp((s) => s.appointments);
+  const plans = useApp((s) => s.plans);
   const { upsertProcedure, removeProcedure } = useApp.getState();
+  const R = useRecordQuery();
   const [editing, setEditing] = useState<Partial<Procedure> | null>(null);
+  const [q, setQ] = useState(R.get("q"));
+  const [dirty, setDirty] = useState(false);
+  const [formKey, setFormKey] = useState(0);
+  const cat = R.get("cat");
+  const ordem = R.get("ordem") || "nome";
+  const dir = R.get("dir") === "desc" ? "desc" : "asc";
+  const sel = R.get("sel");
+  const secao = R.get("secao") === "uso" ? "uso" : "dados";
+
+  const qq = R.get("q");
+  const list = useMemo(() => {
+    const s = qq.trim().toLowerCase();
+    const key = (p: Procedure) => (ordem === "categoria" ? p.category : ordem === "duracao" ? p.durationMin : ordem === "preco" ? p.price : p.name);
+    return procedures
+      .filter((p) => (!cat || p.category === cat) && (!s || p.name.toLowerCase().includes(s)))
+      .sort((a, b) => (cmp(key(a), key(b)) || a.name.localeCompare(b.name)) * (dir === "desc" ? -1 : 1));
+  }, [procedures, cat, ordem, dir, qq]);
+  const selected = procedures.find((p) => p.id === sel);
+  const pos = list.findIndex((p) => p.id === sel);
+
+  const usage = useMemo(() => {
+    if (!selected) return null;
+    const now = new Date().toISOString();
+    const apts = appointments.filter((a) => a.procedureId === selected.id);
+    const done = apts.filter((a) => a.status === "compareceu");
+    return {
+      total: apts.length,
+      future: apts.filter((a) => a.start >= now && a.status !== "cancelado").length,
+      done: done.length,
+      revenue: done.reduce((s, a) => s + a.value, 0),
+      plans: plans.filter((p) => p.procedureId === selected.id && p.status === "ativo").length,
+    };
+  }, [selected, appointments, plans]);
+
+  const discardOk = () => !dirty || confirm("Descartar as alterações não salvas?");
+  const move = (d: number) => {
+    const next = list[pos < 0 ? 0 : pos + d];
+    if (!next || !discardOk()) return;
+    setDirty(false);
+    setFormKey((k) => k + 1);
+    R.set({ sel: next.id });
+  };
+  const remove = () => {
+    if (!selected) return;
+    const inUse = usage && (usage.future > 0 || usage.plans > 0) ? ` Ele tem ${usage.future} agendamento(s) futuro(s) e ${usage.plans} plano(s) ativo(s).` : "";
+    if (!confirm(`Remover ${selected.name}?${inUse}`)) return;
+    removeProcedure(selected.id);
+    R.set({ sel: null, modo: null, secao: null });
+    toast("Procedimento removido");
+  };
+  const noSel = "Selecione um procedimento na lista";
+  const inDados = R.modo === "cadastro" && !!selected && secao === "dados";
+
+  const columns: Column<Procedure>[] = [
+    { key: "nome", label: "Procedimento", sortable: true, render: (p) => <span className="font-medium">{p.name}</span> },
+    { key: "categoria", label: "Categoria", sortable: true, render: (p) => <Badge>{p.category}</Badge> },
+    { key: "duracao", label: "Duração", sortable: true, className: "whitespace-nowrap tabular-nums", render: (p) => `${p.durationMin} min` },
+    { key: "preco", label: "Preço", sortable: true, className: "whitespace-nowrap text-right tabular-nums", render: (p) => money(p.price) },
+  ];
+
   return (
-    <Card>
-      <CardHeader title="Procedimentos e preços" subtitle="Usados em agendamentos, orçamentos e pela IA" action={<Button size="sm" onClick={() => setEditing({ name: "", category: "Consulta", price: 0, durationMin: 30 })}><Plus size={13} /> Novo</Button>} />
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-y border-border text-left text-[11px] uppercase tracking-wide text-muted">
-              <th className="px-4 py-2.5 font-medium">Procedimento</th><th className="px-4 py-2.5 font-medium">Categoria</th><th className="px-4 py-2.5 font-medium">Duração</th><th className="px-4 py-2.5 font-medium">Preço</th><th />
-            </tr>
-          </thead>
-          <tbody>
-            {procedures.map((p) => (
-              <tr key={p.id} className="border-b border-border/60">
-                <td className="px-4 py-2.5 font-medium">{p.name}</td>
-                <td className="px-4 py-2.5"><Badge>{p.category}</Badge></td>
-                <td className="px-4 py-2.5">{p.durationMin} min</td>
-                <td className="px-4 py-2.5">{money(p.price)}</td>
-                <td className="px-4 py-2.5">
-                  <div className="flex justify-end gap-1">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditing(p)} aria-label="Editar"><Pencil size={14} /></Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-danger" onClick={() => { if (confirm(`Remover ${p.name}?`)) removeProcedure(p.id); }} aria-label="Remover"><Trash2 size={14} /></Button>
+    <div className="space-y-3">
+      <Toolbar label="Ações de procedimentos">
+        <ToolButton icon={Plus} label="Adicionar" tone="primary" onClick={() => setEditing({ name: "", category: "Consulta", price: 0, durationMin: 30 })} />
+        <ToolSep />
+        <ToolButton
+          icon={Pencil}
+          label="Alterar"
+          disabled={!selected || inDados}
+          reason={!selected ? noSel : "Você já está editando"}
+          onClick={() => R.set({ modo: "cadastro", secao: null })}
+        />
+        <ToolButton icon={Trash2} label="Excluir" tone="danger" disabled={!selected} reason={noSel} onClick={remove} />
+        <ToolSep />
+        <ToolButton icon={Save} label="Salvar" type="submit" form={PROC_FORM} tone="primary" disabled={!inDados || !dirty} reason={!inDados ? "Abra o cadastro para editar" : "Nenhuma alteração para salvar"} />
+        <ToolButton icon={Undo2} label="Cancelar" disabled={!inDados || !dirty} reason="Nenhuma alteração para desfazer" onClick={() => { setFormKey((k) => k + 1); setDirty(false); }} />
+        <ToolSep />
+        <ToolButton icon={RefreshCw} label="Atualizar" onClick={async () => { await useApp.persist.rehydrate(); toast("Dados atualizados"); }} />
+        <ToolSep />
+        <ToolButton icon={ChevronLeft} label="Anterior" disabled={pos <= 0} reason={pos < 0 ? noSel : "Primeiro registro da lista"} onClick={() => move(-1)} />
+        <ToolButton icon={ChevronRight} label="Próximo" disabled={pos >= list.length - 1} reason="Último registro da lista" onClick={() => move(1)} />
+      </Toolbar>
+
+      <RecordTabs
+        value={R.modo === "cadastro" && selected ? "cadastro" : "registros"}
+        registrosHref={R.hrefWith({ modo: null, secao: null })}
+        cadastroHref={selected ? R.hrefWith({ modo: "cadastro" }) : undefined}
+        cadastroReason={noSel}
+      />
+
+      {R.modo === "registros" || !selected ? (
+        <Card className="overflow-hidden rounded-2xl">
+          <div className="flex flex-wrap items-center gap-2 border-b border-border p-2.5">
+            <div className="relative min-w-56 flex-1">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+              <Input value={q} onChange={(e) => { setQ(e.target.value); R.set({ q: e.target.value }); }} placeholder="Buscar procedimento…" className="h-8 pl-8 text-[13px]" />
+            </div>
+            <Select value={cat} onChange={(e) => R.set({ cat: e.target.value })} className="h-8 w-full text-[13px] sm:w-48" aria-label="Categoria">
+              <option value="">Todas as categorias</option>
+              {PROCEDURE_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+            </Select>
+            {(R.get("q") || cat) && (
+              <Button size="sm" variant="ghost" className="rounded-full" onClick={() => { setQ(""); R.set({ q: null, cat: null }); }}>
+                <X size={12} /> Limpar filtros
+              </Button>
+            )}
+          </div>
+          <DataGrid
+            label="Procedimentos"
+            columns={columns}
+            rows={list}
+            selectedId={sel}
+            onSelect={(id) => R.set({ sel: id })}
+            onOpen={(id) => R.set({ sel: id, modo: "cadastro" })}
+            sort={ordem}
+            dir={dir}
+            onSort={(k) => R.sort(k, ordem, dir)}
+            empty={<Empty title="Nenhum procedimento encontrado" />}
+          />
+          <GridFooter total={list.length} page={0} pages={1} onPage={() => {}} noun="procedimento(s)" />
+        </Card>
+      ) : (
+        <>
+          <CadastroHeader
+            kicker={`Procedimento · ${selected.category}`}
+            title={selected.name}
+            position={{ index: pos, total: list.length }}
+            meta={
+              <>
+                <Badge tone="primary">{money(selected.price)}</Badge>
+                <Badge>{selected.durationMin} min</Badge>
+              </>
+            }
+          />
+          <SectionTabs
+            value={secao}
+            onChange={(s) => {
+              if (s === secao || !discardOk()) return;
+              setDirty(false);
+              setFormKey((k) => k + 1);
+              R.set({ secao: s === "dados" ? null : s });
+            }}
+            items={[{ value: "dados", label: "Dados" }, { value: "uso", label: "Uso" }]}
+          />
+          {secao === "dados" ? (
+            <Card className="rounded-2xl p-5">
+              <p className="mb-4 text-xs text-muted">Edite os campos e use Salvar ou Cancelar na barra de ações.</p>
+              <ProcedureForm
+                key={`${selected.id}-${formKey}`}
+                procedure={selected}
+                onDirtyChange={setDirty}
+                onSaved={() => { setDirty(false); setFormKey((k) => k + 1); }}
+              />
+            </Card>
+          ) : (
+            usage && (
+              <Card className="grid grid-cols-2 gap-4 rounded-2xl p-5 sm:grid-cols-5">
+                {[
+                  ["Agendamentos", String(usage.total)],
+                  ["Futuros", String(usage.future)],
+                  ["Realizados", String(usage.done)],
+                  ["Receita realizada", money(usage.revenue)],
+                  ["Planos ativos", String(usage.plans)],
+                ].map(([k, v]) => (
+                  <div key={k}>
+                    <p className="text-[11px] uppercase tracking-wide text-muted">{k}</p>
+                    <p className="mt-0.5 text-lg font-semibold tabular-nums">{v}</p>
                   </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                ))}
+              </Card>
+            )
+          )}
+        </>
+      )}
+
       {editing && (
         <Modal
           open
           onClose={() => setEditing(null)}
           size="sm"
-          title={editing.id ? "Editar procedimento" : "Novo procedimento"}
+          title="Novo procedimento"
           footer={
             <>
               <Button variant="outline" onClick={() => setEditing(null)}>Cancelar</Button>
@@ -352,7 +724,7 @@ function ProceduresSettings() {
           }
         >
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Nome" className="sm:col-span-2"><Input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></Field>
+            <Field label="Nome" className="sm:col-span-2"><Input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} autoFocus /></Field>
             <Field label="Categoria">
               <Select value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value as Procedure["category"] })}>
                 {PROCEDURE_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
@@ -363,6 +735,6 @@ function ProceduresSettings() {
           </div>
         </Modal>
       )}
-    </Card>
+    </div>
   );
 }

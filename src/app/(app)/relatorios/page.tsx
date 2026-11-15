@@ -24,6 +24,7 @@ import {
   type StalledGroup,
 } from "@/lib/metrics";
 import { useRouter } from "next/navigation";
+import { useUrlTab } from "@/lib/use-url-tab";
 import { useCurrentUser } from "@/lib/store";
 import { can } from "@/lib/permissions";
 import { openCampaignDraft } from "@/lib/campaign-draft";
@@ -42,27 +43,13 @@ function downloadCSV(name: string, rows: (string | number)[][]) {
   URL.revokeObjectURL(a.href);
 }
 
+const REPORTS = ["parado", "perdidas", "equipe", "inatividade", "financeiro", "faturamento", "faltas", "conversao"] as const;
+
 export default function RelatoriosPage() {
-  const [tab, setTab] = useState<Report>("parado");
+  const [tab] = useUrlTab<Report>(REPORTS, "parado");
   return (
     <div className="space-y-5 p-4 lg:p-6">
       <PageHeader title="Relatórios" subtitle="Dados essenciais para a tomada de decisão da clínica" />
-      <div className="overflow-x-auto">
-        <Tabs
-          value={tab}
-          onChange={setTab}
-          items={[
-            { value: "parado", label: "💰 Dinheiro parado" },
-            { value: "perdidas", label: "Vendas perdidas" },
-            { value: "equipe", label: "Equipe" },
-            { value: "inatividade", label: "Clientes ausentes" },
-            { value: "financeiro", label: "Financeiro" },
-            { value: "faturamento", label: "Faturamento mês a mês" },
-            { value: "faltas", label: "Faltas (no-show)" },
-            { value: "conversao", label: "Conversão por canal" },
-          ]}
-        />
-      </div>
       {tab === "parado" && <DinheiroParado />}
       {tab === "perdidas" && <VendasPerdidas />}
       {tab === "equipe" && <Equipe />}

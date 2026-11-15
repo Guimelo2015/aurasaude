@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { CalendarDays, KanbanSquare, MessageCircle, Search, User, type LucideIcon } from "lucide-react";
 import { useApp, useCurrentUser } from "@/lib/store";
 import { can } from "@/lib/permissions";
-import { NAV } from "./nav";
+import { NAV, childHref } from "./nav";
 import { cn, maskCPF, maskPhone, onlyDigits } from "@/lib/utils";
 
 interface Item {
@@ -40,9 +40,17 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const items = useMemo<Item[]>(() => {
     const s = q.trim().toLowerCase();
     const d = onlyDigits(s);
-    const pages: Item[] = NAV.filter((n) => can(user?.role, n.perm) && (!s || n.label.toLowerCase().includes(s))).map((n) => ({
-      id: n.href, group: "Ir para", label: n.label, icon: n.icon, href: n.href,
-    }));
+    // telas e também os submenus (ex.: "Relatórios · Vendas perdidas"), respeitando permissões
+    const pages: Item[] = NAV.filter((n) => can(user?.role, n.perm)).flatMap((n) => {
+      const kids = (n.children ?? []).filter((c) => !c.perm || can(user?.role, c.perm));
+      const own: Item[] = !s || n.label.toLowerCase().includes(s) ? [{ id: n.href, group: "Ir para", label: n.label, icon: n.icon, href: n.href }] : [];
+      const sub: Item[] = s
+        ? kids
+            .filter((c) => c.label.toLowerCase().includes(s) || n.label.toLowerCase().includes(s))
+            .map((c) => ({ id: childHref(n, c), group: "Ir para", label: `${n.label} · ${c.label}`, icon: n.icon, href: childHref(n, c) }))
+        : [];
+      return [...own, ...sub];
+    });
     if (!s) return pages;
     const match = (name: string, phone?: string, cpf?: string) =>
       name.toLowerCase().includes(s) || (d.length >= 3 && ((phone ?? "").includes(d) || (cpf ?? "").includes(d)));

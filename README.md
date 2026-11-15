@@ -18,6 +18,14 @@ Como cada módulo funciona, que conta cada número faz e como tudo se conecta: *
 6. **Admin → Relatórios → 💰 Dinheiro parado** e **Vendas perdidas**: clique em **Recuperar** e a campanha já abre montada.
 7. **Campanhas → Modelos prontos → Reativação de paciente inativo → Lançar**: veja o envio em tempo real, as respostas chegando no Atendimento e os agendamentos sendo atribuídos.
 
+## Navegação (padrão ERP)
+
+- **Menu lateral em grupos** (Dia a dia · Atendimento · Clínica · Gestão · Sistema) com submenus para Campanhas, Relatórios e Configurações.
+- **Abas no topo**, como num navegador: Dashboard fixo, até 10 abas, cada uma guardando seção, filtros e registro aberto.
+- **Barra de ações** no topo de cada módulo (Adicionar, Alterar, Excluir, Salvar, Cancelar, ações do módulo, Atualizar, Anterior/Próximo). Botão que não se aplica fica apagado e explica o motivo.
+- **Registros / Cadastro** em Pacientes, Usuários e Procedimentos: grade densa (ordenar pelo título, Enter abre, setas mudam a linha) e ficha com sub-abas.
+- **Ctrl+K** acha pacientes, conversas, telas e submenus.
+
 ## Como rodar
 
 ```bash
@@ -48,7 +56,7 @@ Build de produção: `npm run build && npm start` · Checagem de tipos: `npm run
 | **Atendimento (WhatsApp)** | Múltiplos números, caixa unificada, filas (IA / Novos / Em atendimento / Aguardando / Finalizados), indicador IA × Humano, assumir, transferir (atendente ou setor), encerrar/reabrir, respostas rápidas, link de agendamento, card de handoff da IA, vínculo com cadastro, agenda lateral, orçamento |
 | **Funil (Kanban)** | 6 etapas do fluxo, drag & drop, valor por coluna, tempo parado na etapa, motivo de perda, disparo de recuperação |
 | **Agenda** | Visão dia (por profissional) e semana, conflito de horário, status (agendado → confirmado → compareceu/faltou), lembrete |
-| **Pacientes** | CRUD com CPF validado e único, busca, prontuário comercial: observações, conversas do WhatsApp, agendamentos, orçamentos e pagamentos |
+| **Pacientes** | Registros (grade com filtros, segmentos, ordenação) e Cadastro (ficha com Visão geral, Dados, Tratamento, WhatsApp, Agendamentos, Financeiro). CPF validado e único |
 | **Dashboard** | Confirmados hoje, faturamento previsto × realizado, novos leads 24h, taxa de faltas, atalhos, canais, orçamentos parados |
 | **Relatórios** | Inatividade (+6 meses), financeiro (dia/semana/mês), faturamento mês a mês, no-show por profissional, conversão por canal |
 | **Configurações** | Números de WhatsApp (QR Code), agente de IA (persona, perguntas, regras de handoff), usuários, procedimentos e preços |
@@ -73,6 +81,9 @@ src/
       dashboard/ atendimento/ funil/ agenda/ pacientes/[id]/ relatorios/ configuracoes/
   components/
     ui.tsx                 design system (Button, Card, Modal, Tabs, Toast…)
+    erp.tsx                kit ERP: Toolbar, RecordTabs, SectionTabs, DataGrid, CadastroHeader
+    nav.ts                 grupos do menu + resolveNav (item ativo a partir da URL)
+    sidebar-nav.tsx · top-tabs.tsx   menu em grupos e abas do topo
     inbox/                 lista de conversas, chat, painel do contato, card de handoff
     forms/                 paciente, agendamento, orçamento (reutilizados em vários módulos)
   lib/

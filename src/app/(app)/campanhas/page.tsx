@@ -4,10 +4,12 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import {
-  AlertCircle, CalendarClock, CheckCircle2, ChevronRight, Clock, Copy, Eye, HeartPulse, Megaphone, MessageSquare, Pause, Play, Plus, Search,
+  AlertCircle, CalendarClock, CheckCircle2, ChevronRight, Clock, Copy, Eye, HeartPulse, LayoutTemplate, Megaphone, MessageSquare, Pause, Play, Plus, RefreshCw, Search,
   Send, ShieldCheck, Sparkles, Trash2, Users, X,
 } from "lucide-react";
-import { Badge, Button, Card, Field, Input, Modal, PageHeader, Select, Tabs, Textarea, toast } from "@/components/ui";
+import { Badge, Button, Card, Field, Input, Modal, PageHeader, Select, Textarea, toast } from "@/components/ui";
+import { useUrlTab } from "@/lib/use-url-tab";
+import { ToolButton, ToolSep, Toolbar } from "@/components/erp";
 import { useApp, useCurrentUser } from "@/lib/store";
 import { useOrganize } from "@/lib/use-organize";
 import { can } from "@/lib/permissions";
@@ -42,7 +44,8 @@ type Tab = "visao_geral" | "nova" | "modelos";
 export default function CampanhasPage() {
   const user = useCurrentUser();
   const canEdit = can(user?.role, "campanhas.edit");
-  const [tab, setTab] = useState<Tab>("visao_geral");
+  const [rawTab, setTab] = useUrlTab<Tab>(["visao_geral", "nova", "modelos"], "visao_geral");
+  const tab: Tab = canEdit ? rawTab : "visao_geral";
   const [prefill, setPrefill] = useState<CampaignDraft | null>(null);
   const [wizardKey, setWizardKey] = useState(0);
   const draft = useCampaignDraft((s) => s.draft);
@@ -69,18 +72,16 @@ export default function CampanhasPage() {
 
   return (
     <div className="space-y-5 p-4 lg:p-6">
+      <Toolbar label="Ações de campanhas">
+        <ToolButton icon={Plus} label="Nova campanha" tone="primary" disabled={!canEdit} reason="Só o administrador cria campanhas" onClick={() => openWizard(null)} />
+        <ToolButton icon={LayoutTemplate} label="Modelos" disabled={!canEdit || tab === "modelos"} reason={!canEdit ? "Só o administrador cria campanhas" : "Você já está nos modelos"} onClick={() => setTab("modelos")} />
+        <ToolButton icon={Megaphone} label="Visão geral" disabled={tab === "visao_geral"} reason="Você já está na visão geral" onClick={() => setTab("visao_geral")} />
+        <ToolSep />
+        <ToolButton icon={RefreshCw} label="Atualizar" onClick={async () => { await useApp.persist.rehydrate(); toast("Dados atualizados"); }} />
+      </Toolbar>
       <PageHeader
         title="Campanhas"
         subtitle="Mensagens em massa para recuperar leads e reativar pacientes, com resultado medido até o agendamento"
-        actions={canEdit && <Button onClick={() => openWizard(null)}><Plus size={15} /> Nova campanha</Button>}
-      />
-      <Tabs
-        value={tab}
-        onChange={(t) => { if (t === "nova") openWizard(null); else setTab(t); }}
-        items={[
-          { value: "visao_geral", label: "Visão geral" },
-          ...(canEdit ? [{ value: "nova" as Tab, label: prefill?.id ? "Editar campanha" : "Nova campanha" }, { value: "modelos" as Tab, label: "Modelos prontos" }] : []),
-        ]}
       />
       {tab === "visao_geral" && <CampaignList canEdit={canEdit} onEdit={(c) => openWizard(c)} onNew={() => openWizard(null)} />}
       {tab === "nova" && canEdit && <CampaignWizard key={wizardKey} prefill={prefill} onDone={() => { setPrefill(null); setTab("visao_geral"); }} />}
