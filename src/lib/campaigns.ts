@@ -146,9 +146,41 @@ export function resolveAudience(c: Pick<Campaign, "id" | "audience" | "segmentId
   return { recipients, excluded };
 }
 
-/** Variáveis: {{nome}} primeiro nome · {{clinica}} · {{data}} última consulta (paciente) ou 1º contato (lead). */
+/**
+ * Campos personalizáveis. No banco o texto guarda `{{chave}}`; no editor a pessoa vê a
+ * etiqueta legível (`[Nome]`) e insere pela lista, sem digitar chaves.
+ */
+export const MESSAGE_FIELDS = [
+  { key: "nome", tag: "[Nome]", label: "Primeiro nome", hint: "Ex.: Ana" },
+  { key: "nome_completo", tag: "[Nome completo]", label: "Nome completo", hint: "Ex.: Ana Souza" },
+  { key: "clinica", tag: "[Clínica]", label: "Nome da clínica", hint: "" },
+  { key: "data", tag: "[Data]", label: "Data", hint: "Última consulta (pacientes) ou primeiro contato (leads)" },
+] as const;
+
+/** `{{nome}}` → `[Nome]` (para mostrar no editor e nos resumos). */
+export function toFriendly(text: string) {
+  return MESSAGE_FIELDS.reduce((t, f) => t.replace(new RegExp(`\\{\\{\\s*${f.key}\\s*\\}\\}`, "g"), f.tag), text);
+}
+
+/** `[Nome]` → `{{nome}}` (o que é salvo). Aceita maiúsculas/minúsculas e sem acento. */
+export function fromFriendly(text: string) {
+  const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+  const byTag = new Map(MESSAGE_FIELDS.map((f) => [norm(f.tag.slice(1, -1)), f.key]));
+  return text.replace(/\[([^\]\n]{1,30})\]/g, (all, inner: string) => {
+    const k = byTag.get(norm(inner));
+    return k ? `{{${k}}}` : all;
+  });
+}
+
+/** Etiquetas entre colchetes que não são campos conhecidos (provável erro de digitação). */
+export function unknownTags(text: string) {
+  return [...new Set(fromFriendly(text).match(/\[[^\]\n]{1,30}\]/g) ?? [])];
+}
+
+/** Variáveis: {{nome}} primeiro nome · {{nome_completo}} · {{clinica}} · {{data}} última consulta (paciente) ou 1º contato (lead). */
 export function renderMessage(text: string, vars: { nome: string; clinica: string; data?: string }) {
   return text
+    .replace(/\{\{\s*nome_completo\s*\}\}/g, vars.nome)
     .replace(/\{\{\s*nome\s*\}\}/g, vars.nome.split(" ")[0])
     .replace(/\{\{\s*clinica\s*\}\}/g, vars.clinica)
     .replace(/\{\{\s*data\s*\}\}/g, vars.data ?? "");

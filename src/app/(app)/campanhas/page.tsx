@@ -15,7 +15,8 @@ import { useOrganize } from "@/lib/use-organize";
 import { can } from "@/lib/permissions";
 import { CLINIC_SHORT } from "@/lib/seed";
 import { useCampaignDraft, type CampaignDraft } from "@/lib/campaign-draft";
-import { AUDIENCE_LABEL, AUDIENCE_RULE, campaignRevenue, computeStats, renderMessage, resolveAudience } from "@/lib/campaigns";
+import { AUDIENCE_LABEL, AUDIENCE_RULE, campaignRevenue, computeStats, renderMessage, resolveAudience, toFriendly } from "@/lib/campaigns";
+import { MessageEditor } from "@/components/message-editor";
 import {
   CAMPAIGN_ATTRIBUTION_DAYS, CAMPAIGN_COOLDOWN_DAYS,
   type Campaign, type CampaignAudience, type CampaignChannel, type CampaignRecipient, type CampaignStatus,
@@ -266,7 +267,7 @@ function CampaignDetailModal({ campaignId, onClose, onEdit }: { campaignId: stri
             {c.messages.map((m, i) => (
               <div key={i} className="rounded-lg bg-surface-2 p-3 text-sm">
                 {i > 0 && m.delayMin ? <p className="mb-1 text-xs text-muted"><Clock size={11} className="inline" /> {delayLabel(m.delayMin)} após a anterior · só para quem não respondeu</p> : null}
-                <p className="whitespace-pre-wrap">{m.text}</p>
+                <p className="whitespace-pre-wrap">{toFriendly(m.text)}</p>
               </div>
             ))}
           </div>
@@ -367,7 +368,8 @@ function CampaignWizard({ prefill, onDone }: { prefill: CampaignDraft | null; on
   const canSave = canNext1 && canNext2;
 
   const sample = audience.recipients[0];
-  const preview = renderMessage(form.messages[0]?.text ?? "", { nome: sample?.name ?? "Maria", clinica: CLINIC_SHORT, data: "12/08/2026" });
+  const sampleVars = { nome: sample?.name ?? "Maria Silva", clinica: CLINIC_SHORT, data: "12/08/2026" };
+  const preview = renderMessage(form.messages[0]?.text ?? "", sampleVars);
 
   function save(launch: boolean) {
     const payload = {
@@ -460,7 +462,7 @@ function CampaignWizard({ prefill, onDone }: { prefill: CampaignDraft | null; on
               <Button size="sm" variant="outline" onClick={addMsg}><Plus size={13} /> Adicionar follow-up</Button>
             </div>
             <p className="text-xs text-muted">
-              Variáveis: <code className="rounded bg-surface-2 px-1">{"{{nome}}"}</code> primeiro nome · <code className="rounded bg-surface-2 px-1">{"{{clinica}}"}</code> {CLINIC_SHORT} · <code className="rounded bg-surface-2 px-1">{"{{data}}"}</code> data da última consulta (pacientes) ou do primeiro contato (leads).
+              Para personalizar, clique em um campo (ex.: <strong>Primeiro nome</strong>) e ele entra no texto onde está o cursor. Cada cliente recebe com os próprios dados.
               Follow-ups só vão para quem não respondeu.
             </p>
             {form.messages.map((m, i) => (
@@ -474,7 +476,7 @@ function CampaignWizard({ prefill, onDone }: { prefill: CampaignDraft | null; on
                     <Input type="number" min={1} value={m.delayMin} onChange={(e) => patchMsg(i, { delayMin: e.target.value })} className="w-48" />
                   </Field>
                 )}
-                <Textarea value={m.text} onChange={(e) => patchMsg(i, { text: e.target.value })} rows={4} placeholder={i === 0 ? "Oi {{nome}}, tudo bem? Aqui é do {{clinica}}…" : "Mensagem de follow-up…"} />
+                <MessageEditor value={m.text} onChange={(text) => patchMsg(i, { text })} sample={sampleVars} placeholder={i === 0 ? "Oi [Nome], tudo bem? Aqui é do [Clínica]…" : "Mensagem de follow-up…"} />
                 {i === 0 && m.text && !/sair/i.test(m.text) && (
                   <p className="mt-1.5 flex items-center gap-1 text-[11px] text-warning"><AlertCircle size={11} /> Recomendado incluir “responda SAIR para não receber mais mensagens” (LGPD).</p>
                 )}
@@ -643,7 +645,7 @@ function TemplateGallery({ onUse }: { onUse: (d: CampaignDraft) => void }) {
                 <p className="font-semibold">{t.name}</p>
                 <p className="mt-0.5 text-xs text-muted">{t.description}</p>
                 <p className="mt-0.5 text-xs text-muted">WhatsApp · {AUDIENCE_LABEL[t.draft.audience!]} · {t.draft.messages!.length} mensagem(ns)</p>
-                <div className="mt-2 rounded-lg bg-surface-2 p-2 text-xs italic text-muted">“{t.draft.messages![0].text.slice(0, 110)}…”</div>
+                <div className="mt-2 rounded-lg bg-surface-2 p-2 text-xs italic text-muted">“{toFriendly(t.draft.messages![0].text).slice(0, 110)}…”</div>
               </div>
             </div>
             <div className="mt-3 flex justify-end">

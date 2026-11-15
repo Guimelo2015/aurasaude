@@ -39,12 +39,17 @@ Agendada ──hora──► Enviando   Pausada
 
 O assistente mostra o público **já com as exclusões** e o motivo de cada uma. Exemplo da demo: "Todos os leads perdidos" mostra só 2 contatos, porque 120 receberam a campanha de outubro há 5 dias (carência) e 4 pediram SAIR.
 
-## Variáveis da mensagem
-| Variável | Vira |
-|---|---|
-| `{{nome}}` | Primeiro nome do destinatário |
-| `{{clinica}}` | Instituto Equilíbrio |
-| `{{data}}` | Data da **última consulta** (paciente) ou do **primeiro contato** (lead) |
+## Campos personalizados da mensagem
+Quem escreve não precisa conhecer variáveis: acima de cada mensagem há botões (**Primeiro nome**, **Nome completo**, **Nome da clínica**, **Data**). O clique insere uma etiqueta legível, como `[Nome]`, no ponto do cursor. Abaixo do texto, a **prévia ao vivo** mostra como a mensagem chega para um cliente do público. Uma etiqueta digitada errada (ex.: `[Nom]`) gera um aviso.
+
+| Botão | Etiqueta no editor | Salvo como | Vira |
+|---|---|---|---|
+| Primeiro nome | `[Nome]` | `{{nome}}` | Primeiro nome do destinatário |
+| Nome completo | `[Nome completo]` | `{{nome_completo}}` | Nome e sobrenome |
+| Nome da clínica | `[Clínica]` | `{{clinica}}` | Instituto Equilíbrio |
+| Data | `[Data]` | `{{data}}` | Data da **última consulta** (paciente) ou do **primeiro contato** (lead) |
+
+Por baixo o texto continua salvo com `{{…}}`, então modelos e campanhas antigas funcionam sem mudança.
 
 O assistente alerta quando a primeira mensagem não tem "responda SAIR" (LGPD) e lembra de **nunca citar diagnóstico ou medicação** (sigilo em saúde mental).
 
