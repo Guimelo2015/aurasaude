@@ -329,6 +329,13 @@ function UsersSettings() {
     if (next) R.set({ sel: next.id });
   };
   const noSel = "Selecione um usuário na lista";
+  // Desativar em vez de excluir: o histórico (conversas, leads, tarefas) continua ligado ao usuário.
+  const toggleAccess = (u: User) => {
+    if (u.id === me?.id) return;
+    if (u.active && !window.confirm(`Desativar ${u.name}?\n\nO acesso ao sistema é cortado na hora. O histórico de atendimentos, leads e tarefas continua guardado, e você pode reativar quando quiser.`)) return;
+    toggle(u.id);
+    toast(u.active ? `${u.name} foi desativado(a) e perdeu o acesso` : `${u.name} voltou a ter acesso`);
+  };
 
   const columns: Column<User>[] = [
     {
@@ -352,6 +359,28 @@ function UsersSettings() {
     },
     { key: "prof", label: "Especialidade", render: (u) => profOf(u)?.specialty ?? <span className="text-muted">—</span> },
     { key: "situacao", label: "Situação", sortable: true, render: (u) => <Badge tone={u.active ? "success" : "neutral"}>{u.active ? "Ativo" : "Inativo"}</Badge> },
+    {
+      key: "acesso",
+      label: "Acesso",
+      className: "w-px text-right",
+      render: (u) =>
+        u.id === me?.id ? (
+          <span className="text-[11px] text-muted">—</span>
+        ) : (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); toggleAccess(u); }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            className={cn(
+              "inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition cursor-pointer",
+              u.active ? "border-danger/30 text-danger hover:bg-danger-soft" : "border-primary/30 text-primary-strong hover:bg-primary-soft",
+            )}
+          >
+            {u.active ? <UserX size={12} /> : <UserCheck size={12} />}
+            {u.active ? "Desativar" : "Reativar"}
+          </button>
+        ),
+    },
   ];
 
   return (
@@ -363,15 +392,11 @@ function UsersSettings() {
         <ToolSep />
         <ToolButton
           icon={selected?.active ? UserX : UserCheck}
-          label={selected?.active === false ? "Ativar" : "Desativar"}
+          label={selected?.active === false ? "Reativar" : "Desativar"}
           tone={selected?.active ? "danger" : "primary"}
           disabled={!selected || isSelf}
           reason={!selected ? noSel : "Você não pode desativar a si mesmo"}
-          onClick={() => {
-            if (!selected) return;
-            toggle(selected.id);
-            toast(selected.active ? `${selected.name} perdeu o acesso` : `${selected.name} voltou a ter acesso`);
-          }}
+          onClick={() => selected && toggleAccess(selected)}
         />
         <ToolSep />
         <ToolButton icon={RefreshCw} label="Atualizar" onClick={async () => { await useApp.persist.rehydrate(); toast("Dados atualizados"); }} />
@@ -453,9 +478,24 @@ function UsersSettings() {
                   </div>
                 ))}
               </dl>
-              <p className="mt-5 rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted">
-                Nome, e-mail e perfil são definidos no convite. A edição entra com o backend (fase 2). Aqui você controla o acesso pelo botão Ativar / Desativar.
-              </p>
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">Acesso ao sistema</p>
+                  <p className="text-xs text-muted">
+                    {isSelf
+                      ? "Você não pode desativar o próprio acesso."
+                      : selected.active
+                        ? "Desativar corta o acesso na hora. O histórico de atendimentos, leads e tarefas continua guardado."
+                        : "Usuário desativado: não entra no sistema. O histórico continua guardado."}
+                  </p>
+                </div>
+                {!isSelf && (
+                  <Button size="sm" variant="outline" className={selected.active ? "text-danger" : "text-primary-strong"} onClick={() => toggleAccess(selected)}>
+                    {selected.active ? <UserX size={13} /> : <UserCheck size={13} />} {selected.active ? "Desativar usuário" : "Reativar usuário"}
+                  </Button>
+                )}
+              </div>
+              <p className="mt-3 text-xs text-muted">Nome, e-mail e perfil são definidos no convite. A edição entra com o backend (fase 2).</p>
             </Card>
           ) : (
             <Card className="rounded-2xl p-5">

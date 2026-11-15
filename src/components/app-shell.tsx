@@ -59,8 +59,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!hydrated) return;
     if (!user) router.replace("/login");
-    else if (current && !can(user.role, current.perm)) router.replace(allowed[0]?.href ?? "/login");
-  }, [hydrated, user, current, allowed, router]);
+    else if (!user.active) {
+      // usuário desativado perde o acesso na hora, mesmo com a sessão aberta
+      logout();
+      router.replace("/login");
+    } else if (current && !can(user.role, current.perm)) router.replace(allowed[0]?.href ?? "/login");
+  }, [hydrated, user, current, allowed, router, logout]);
 
   useEffect(() => setMobileOpen(false), [pathname]);
 
